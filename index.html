@@ -4140,7 +4140,11 @@ function renderCiclo() {
   });
   // -- FIM DA PREPARAÇÃO --
 
-  var rows = allEntries;
+  // FILTRAGEM RIGOROSA: Remove matérias pausadas/ocultas da tabela Ciclo
+  var rows = allEntries.filter(function(e) {
+    var st = (discSettings[e.disc] || {}).status || "ativa";
+    return st !== "pausada";
+  });
   if (typeof _df !== 'undefined' && _df) rows = rows.filter(function(e) { return e.disc === _df; });
   if (s) rows = rows.filter(function(e) {
     return (e.disc + e.topico + e.assunto + e.sub).toLowerCase().indexOf(s) >= 0;
@@ -6649,12 +6653,14 @@ function resetDates() {
     var all = getAllEntries();
 
     // Filter which entries to reset
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+
     var targets = all.filter(function(e) {
+      var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+      if (statusDisc === "pausada") return false; // IGNORA MATÉRIAS PAUSADAS
+
       var ud = store["e" + e.id + "_r0"] || {};
-      // Preserva tópicos com data alterada manualmente (a menos que o
-      // usuário desmarque a proteção de propósito) — sem isso, Redefinir
-      // Datas sobrescrevia silenciosamente qualquer ajuste manual feito
-      // no Ciclo.
       if (respectManual && ud._manualDate) return false;
       if (scope === "pending") {
         var st = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
