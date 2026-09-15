@@ -7362,8 +7362,23 @@ function initGerenciar() {
   initNotifSystem();
   initCicloModeUI();
   initCloudSyncUI();
+
+  // 1. Carrega o painel inteligente e os cards de disciplinas/metas
+  renderDisciplinasInteligente();
+  renderVisaoGeral();
+
   var allDiscs = getCustomDiscs();
 
+  // Populate add-entry discipline dropdown
+  var sel = document.getElementById("gf-disc");
+  if (sel) {
+    sel.innerHTML = "<option value=''>-- selecionar --</option>";
+    allDiscs.forEach(function(d) {
+      var opt = document.createElement("option");
+      opt.value = d; opt.textContent = d;
+      sel.appendChild(opt);
+    });
+  }
   // Populate add-entry discipline dropdown
   var sel = document.getElementById("gf-disc");
   sel.innerHTML = "<option value=''>-- selecionar --</option>";
