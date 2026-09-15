@@ -916,7 +916,8 @@ select option{background:var(--bg3)}
     <div class="nav-divider"></div>
     <button id="theme-toggle-btn" class="btn-exp" onclick="toggleTheme()" title="Alternar modo dia/noite" style="font-size:.9rem;padding:.32rem .55rem">🌙</button>
     <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
-    <!-- Botões de gerenciar removidos do topo para evitar poluição visual. Use a aba Gerenciar. -->
+    <button class="btn-exp" onclick="exportData()">📥 Exportar</button>
+    <button class="btn-exp" onclick="document.getElementById('imp').click()">📤 Importar</button>
   </div>
 </div>
 
@@ -2139,6 +2140,10 @@ service cloud.firestore {
   .pt { font-size: 1.6rem; }
   .gab-inputs-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
 }
+
+  .nav-right { flex-direction: row !important; flex-wrap: wrap !important; gap: 0.4rem !important; justify-content: center !important; }
+  .btn-exp { width: auto !important; flex: 1 1 auto; justify-content: center; }
+
 /* --- FIM DA RESPONSIVIDADE COMPLETA --- */
 
 /* === CORREÇÕES DEFINITIVAS MOBILE (GERENCIAR E DESEMPENHO) === */
@@ -2574,6 +2579,7 @@ if (!firebase.apps.length) {
 }
       fbAuth = firebase.auth();
       fbDb = firebase.firestore();
+      fbAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
     }
     return true;
   } catch (ex) {
@@ -2712,16 +2718,21 @@ function startFirestoreSync() {
       var local = lget();
       var remoteTime = remote._updatedAt || 0;
       var localTime = local._updatedAt || 0;
+      
+      var isLegacy = !remote.main;
+      var remoteMain = isLegacy ? remote : remote.main;
+      
       if (remoteTime > localTime) {
-        localStorage.setItem(LS, JSON.stringify(remote));
-        updateFbSyncStatus("\u2601 Atualizado agora de outro dispositivo");
+        remoteMain._updatedAt = remoteTime;
+        localStorage.setItem("cldf_v2", JSON.stringify(remoteMain));
+        if (remote.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(remote.custom));
+        if (remote.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(remote.methods));
+        
+        updateFbSyncStatus("\u2601 Atualizado de outro disp.");
         initAllMaps();
         reAll();
       }
     } else {
-      // Primeiro login desse usuário: se já tem dados locais neste
-      // navegador (de antes de configurar login), envia pra nuvem em
-      // vez de começar do zero.
       var local = lget();
       if (Object.keys(local).length > 1) pushToFirestore();
     }
@@ -2733,8 +2744,12 @@ function startFirestoreSync() {
 function pushToFirestore() {
   var ref = fbUserDocRef();
   if (!ref) return;
-  var payload = lget();
-  payload._updatedAt = Date.now();
+  var payload = {
+    main: lget(),
+    custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+    methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+    _updatedAt: Date.now()
+  };
   _fbSavingRemote = true;
   ref.set(payload).then(function() {
     updateFbSyncStatus("\u2601 Sincronizado");
