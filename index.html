@@ -17,7 +17,7 @@
   } catch(e) {}
 })();
 // =====================================================================
-// CONEXÃO DA INTERFACE COM O MOTOR INTELIGENTE (FASE 1 e 2)
+// CONEXÃO DA INTERFACE COM O MOTOR INTELIGENTE (CORRIGIDO)
 // =====================================================================
 
 function salvarConfigGlobais() {
@@ -40,21 +40,22 @@ function renderVisaoGeral() {
     var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
     var simultaneas = Number(cicloCfg.numSimult) || 4;
     
-    // Garante que pega todas as entradas mesmo se o mapa demorar um segundo
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
-    if (!allEntries.length && typeof ENTRIES !== 'undefined') allEntries = ENTRIES;
-
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
     var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
     var htmlMetas = "";
     
-    // Extrai disciplinas únicas do edital atual
     var discUnicas = [];
     allEntries.forEach(function(e) {
         if (e.disc && discUnicas.indexOf(e.disc) === -1) discUnicas.push(e.disc);
     });
 
+    if (discUnicas.length === 0) {
+        container.innerHTML = '<p style="font-size:0.85rem; color:var(--ink3);">Nenhuma disciplina encontrada. Importe um edital na aba Gerenciar.</p>';
+        return;
+    }
+
     discUnicas.forEach(function(dName) {
-        var cfg = discSettings[dName] || { status: "ativa", prioridade: 3, cargaHoraria: 3, prazoDiasRestantes: 30 };
+        var cfg = discSettings[dName] || { status: "ativa", prioridade: 3, frequenciaDesejada: 1, cargaHoraria: 3, prazoDiasRestantes: 30 };
         if (cfg.status === "pausada") {
             pausadas++;
         } else {
@@ -92,7 +93,7 @@ function renderVisaoGeral() {
 
     var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
     
-    var htmlPainel = '' +
+    container.innerHTML = 
         '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
                 '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem; color:var(--ink2);">Matérias Ativas</span>' +
@@ -105,9 +106,7 @@ function renderVisaoGeral() {
             '</div>' +
         '</div>' +
         '<h4 style="margin:0 0 0.8rem 0; color:var(--fg);">Diagnóstico de Viabilidade das Metas</h4>' +
-        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina encontrada. Importe um edital na aba Gerenciar.</span>");
-        
-    container.innerHTML = htmlPainel;
+        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina ativa.</span>");
 }
 
 function renderDisciplinasInteligente() {
@@ -118,8 +117,7 @@ function renderDisciplinasInteligente() {
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
     
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
-    if (!allEntries.length && typeof ENTRIES !== 'undefined') allEntries = ENTRIES;
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
     
     var disciplinasUnicas = [];
     allEntries.forEach(function(e) {
@@ -160,45 +158,6 @@ function renderDisciplinasInteligente() {
     container.innerHTML = html;
 }
 
-// Garante que o painel seja chamado quando a aba Gerenciar for aberta
-var _oldInitGerenciar = window.initGerenciar;
-window.initGerenciar = function() {
-    if (typeof _oldInitGerenciar === 'function') { _oldInitGerenciar(); }
-    setTimeout(function() {
-        renderDisciplinasInteligente();
-        renderVisaoGeral();
-    }, 50);
-};
-
-    var html = "";
-    disciplinasUnicas.forEach(function(dName) {
-        var cfg = discSettings[dName] || {};
-        var status = cfg.status || "ativa";
-        var prioridade = cfg.prioridade || 3;
-        var frequencia = cfg.frequenciaDesejada || 1;
-        var prazo = cfg.prazoDiasRestantes || 30;
-        var carga = cfg.cargaHoraria || 3; // Nova propriedade
-        var isPausada = (status !== "ativa");
-        var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
-
-        html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
-                '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
-                    '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
-                    '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
-                '</div>' +
-                '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
-                    '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                '</div>' +
-            '</div>';
-    });
-    
-    container.innerHTML = html;
-}
-
 function salvarConfigDisciplina(dName, dNameId) {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     if (!store._cicloConfig) store._cicloConfig = {};
@@ -214,8 +173,16 @@ function salvarConfigDisciplina(dName, dNameId) {
 
     lset(store); 
     renderDisciplinasInteligente(); 
-    renderVisaoGeral(); // Recalcula o painel dinamicamente
+    renderVisaoGeral(); 
+    toast("✓ Configuração de " + dName + " salva!");
 }
+
+// Força a carga imediata quando a aba Gerenciar for aberta
+window.initGerenciar = function() {
+    renderDisciplinasInteligente();
+    renderVisaoGeral();
+};
+// =====================================================================
 
 function salvarIntervalosRevisao() {
     var val = document.getElementById("rev-intervals-input").value;
