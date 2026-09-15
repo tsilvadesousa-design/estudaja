@@ -7086,9 +7086,12 @@ var DEFAULT_QUEUE_HINTS = [
 
 function getCicloConfig() {
   var d = lget();
+  var cfg = d._cicloConfig || {};
   return {
-    mode: d._cicloMode || "tradicional",
-    numSimult: d._cicloNumSimult || 2,
+    mode: d._cicloMode || cfg.mode || "tradicional",
+    numSimult: Number(cfg.numSimult || d._cicloNumSimult || 4),
+    horasDisponiveis: Number(cfg.horasDisponiveis || 20),
+    disciplinas: cfg.disciplinas || {},
     queue: (d._cicloQueue && d._cicloQueue.length) ? d._cicloQueue : null
   };
 }
@@ -8394,7 +8397,7 @@ function reAll() {
   else if (pageId === "ciclo") renderCiclo();
   else if (pageId === "concluidos") renderConcluidos();
   else if (pageId === "desempenho") renderDesemp();
-  else if (pageID === "gerenciar") { renderCustomList(); renderObsSearch(); renderDisciplinasInteligente(); renderVisaoGeral(); }
+  else if (pageId === "gerenciar") { renderCustomList(); renderObsSearch(); }
   else if (pageId === "resumos") initResumosPage();
   // "gabarito" não depende dos tópicos, não precisa re-renderizar
 }
