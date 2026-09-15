@@ -905,12 +905,13 @@ select option{background:var(--bg3)}
     <button class="nbtn" onclick="showPage('resumos',this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9a3 3 0 0 1 3 3v15l-7.5-4L3 21V6a3 3 0 0 1 3-3z"/><path d="M8.5 8h6M8.5 11.3h6"/></svg> Resumos</button>
     <button class="nbtn" onclick="showPage('gerenciar',this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h11M19 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg> Gerenciar</button>
   </nav>
-  <div class="nav-right">
-    <div id="fb-user-badge" style="display:none;align-items:center;gap:.4rem;font-size:.68rem;color:var(--ink2)">
-      <span>&#128100; <b id="fb-user-name"></b></span>
-      <button class="btn-exp" onclick="authLogout()" style="padding:.2rem .5rem">Sair</button>
-      <div class="nav-divider"></div>
-    </div>
+<div class="nav-right">
+    <span id="save-indicator" style="font-family:var(--fm);font-size:.62rem;color:var(--green);white-space:nowrap">✓ Salvo</span>
+    <button class="btn-exp" onclick="exportData()">📥 Exportar</button>
+    <button class="btn-exp" onclick="document.getElementById('imp').click()">📤 Importar</button>
+    <button id="theme-toggle-btn" class="btn-exp" onclick="toggleTheme()" title="Alternar modo dia/noite">🌙</button>
+    <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
     <span id="save-indicator" style="font-family:var(--fm);font-size:.62rem;color:var(--green);white-space:nowrap" title="Confirma que suas altera&#231;&#245;es est&#227;o sendo salvas automaticamente no navegador">&#10003; Salvo</span>
     <span class="nav-date-txt" id="nav-dt"></span>
     <div class="nav-divider"></div>
