@@ -4087,28 +4087,30 @@ function calcularScoreDisciplina(disciplina) {
 }
 // --- FIM DO MOTOR INTELIGENTE ---
 
-
+// ── CORREÇÃO: FILTRAR MATÉRIAS PAUSADAS NO CICLO ────────────────
 function renderCiclo() {
   var s = (document.getElementById("ciclo-s").value || "").toLowerCase();
   var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
   
-  // -- INÍCIO DA INTELIGÊNCIA VISUAL --
   var cicloCfg = store._cicloConfig || {};
   var discSettings = cicloCfg.disciplinas || {};
   var allEntries = getAllEntries();
   
-  // Pré-calcula quantos tópicos pendentes cada matéria tem no banco total
-  // (Precisamos disso para o Alerta de Fogo 🔥 funcionar com precisão)
+  // FILTRAGEM ABSOLUTA: Remove matérias pausadas/ocultas da exibição do Ciclo
+  allEntries = allEntries.filter(function(e) {
+    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+    return statusDisc !== "pausada";
+  });
+
   var pendentesPorDisc = {};
   allEntries.forEach(function(ex) {
     var udx = store["e" + ex.id + "_r0"] || {};
-    var statx = udx.status || (ex.ok === "\u2705" ? "ok" : "pend");
+    var statx = udx.status || (ex.ok === "✅" ? "ok" : "pend");
     if (statx !== "ok") {
       var d = ex.disc || "";
       pendentesPorDisc[d] = (pendentesPorDisc[d] || 0) + 1;
     }
   });
-  // -- FIM DA PREPARAÇÃO --
 
   var rows = allEntries;
   if (typeof _df !== 'undefined' && _df) rows = rows.filter(function(e) { return e.disc === _df; });
@@ -4116,28 +4118,29 @@ function renderCiclo() {
     return (e.disc + e.topico + e.assunto + e.sub).toLowerCase().indexOf(s) >= 0;
   });
 
-  // Ordena pela data EFETIVA de estudo
   rows = rows.map(function(e) {
     var ud0 = store["e" + e.id + "_r0"] || {};
     e._sortDate = ud0.date || e.date || "";
     return e;
   }).sort(function(a, b) { return a._sortDate < b._sortDate ? -1 : a._sortDate > b._sortDate ? 1 : 0; });
   
-  document.getElementById("ciclo-cnt").textContent =
-    rows.length + " t\u00f3pico" + (rows.length !== 1 ? "s" : "") + " encontrado" + (rows.length !== 1 ? "s" : "");
+  var cntEl = document.getElementById("ciclo-cnt");
+  if (cntEl) cntEl.textContent = rows.length + " tópico" + (rows.length !== 1 ? "s" : "") + " encontrado" + (rows.length !== 1 ? "s" : "");
     
-  document.getElementById("ciclo-body").innerHTML = rows.map(function(e) {
+  var bodyEl = document.getElementById("ciclo-body");
+  if (!bodyEl) return;
+
+  bodyEl.innerHTML = rows.map(function(e) {
     var t = getSaved(e.id, store);
     var q = t.q, a = t.a, pct = q ? a/q : 0;
     var ud = store["e" + e.id + "_r0"] || {};
-    var status = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
+    var status = ud.status || (e.ok === "✅" ? "ok" : "pend");
     var studyDate = ud.date || e.date;
     var pStr = pct ? Math.round(pct*100) + "%" : "&mdash;";
     var pCl = pct >= 0.8 ? "bg" : pct >= 0.6 ? "ba" : pct > 0 ? "br" : "bk";
     var sCl = status === "ok" ? "bg" : status === "skip" ? "bo" : "bk";
-    var sLbl = status === "ok" ? "&#10003; OK" : status === "skip" ? "&#8599; Adiado" : "Pendente";
+    var sLbl = status === "ok" ? "✓ OK" : status === "skip" ? "↗ Adiado" : "Pendente";
 
-    // -- INJEÇÃO DOS BADGES INTELIGENTES NA MATÉRIA --
     var cfg = discSettings[e.disc] || {};
     var prioridade = cfg.prioridade || 3;
     var carga = Number(cfg.cargaHoraria) || 3;
@@ -4145,13 +4148,11 @@ function renderCiclo() {
     var semanas = prazoDias / 7 || 1;
     var pendentes = pendentesPorDisc[e.disc] || 0;
     
-    // Motor de urgência: se exige mais horas do que as alocadas, acende o alerta
     var horasNecessarias = (pendentes * 0.5) / semanas;
     var isTight = (horasNecessarias > carga); 
     
     var prioBadge = "<span style='font-size:0.55rem; margin-left:6px; padding:1px 4px; border-radius:3px; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:inherit' title='Prioridade configurada'>P" + prioridade + "</span>";
-    var fireIcon = isTight ? "<span title='Prazo Apertado/Incompatível (Foco Total)' style='margin-left:4px; font-size:0.8rem; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.5));'>🔥</span>" : "";
-    // -- FIM DA INJEÇÃO --
+    var fireIcon = isTight ? "<span title='Prazo Apertado/Incompatível' style='margin-left:4px; font-size:0.8rem;'>🔥</span>" : "";
 
     var rh = "";
     var doneCount = 0;
@@ -4167,228 +4168,43 @@ function renderCiclo() {
         rh += "<span class='rd " + rc + "' title='" + fmtD(revDate) + "'>R" + r.num + " " + fmtD(revDate) + "</span>";
       }
     });
-    if (doneCount > 0) rh = "<span class='rd done'>&#10003;" + doneCount + "</span> " + rh;
+    if (doneCount > 0) rh = "<span class='rd done'>✓" + doneCount + "</span> " + rh;
 
-    var assH = (e.assunto && e.assunto !== e.topico) ?
-      "<div style='font-size:.72rem;color:var(--ink3)'>" + e.assunto + "</div>" : "";
+    var assH = (e.assunto && e.assunto !== e.topico) ? "<div style='font-size:.72rem;color:var(--ink3)'>" + e.assunto + "</div>" : "";
     var customTag = e.custom ? "<span class='badge bo' style='font-size:.5rem'>custom</span> " : "";
+    var obs = ud.note || ud._obs || "";
+    var mats = ud._material || [];
+    var links = ud._links || "";
 
-    var obs   = ud.note || ud._obs || "";
-    var mats  = ud._material || [];
-    var links = ud._links    || "";
-
-    var obsLbl = obs
-      ? "<div style='font-size:.68rem;color:var(--ink3);white-space:pre-wrap'>" + obs.slice(0,100).replace(/</g,"&lt;") + (obs.length>100?"...":"") + "</div>"
-      : "<div style='font-size:.68rem;color:var(--ink4);font-style:italic'>+ observa&#231;&#227;o</div>";
-    var obsCell =
-      "<div id='cob_" + e.id + "' style='cursor:pointer' title='Clique para editar a observa\u00e7\u00e3o' onclick='openCicloObsEditor(\"" + e.id + "\")'>" + obsLbl + "</div>" +
+    var obsLbl = obs ? "<div style='font-size:.68rem;color:var(--ink3);white-space:pre-wrap'>" + obs.slice(0,100).replace(/</g,"&lt;") + (obs.length>100?"...":"") + "</div>" : "<div style='font-size:.68rem;color:var(--ink4);font-style:italic'>+ observação</div>";
+    var obsCell = "<div id='cob_" + e.id + "' style='cursor:pointer' onclick='openCicloObsEditor(\"" + e.id + "\")'>" + obsLbl + "</div>" +
       "<div id='coe_" + e.id + "' style='display:none;margin-top:.25rem'>" +
-        "<textarea id='coi_" + e.id + "' rows='2' style='width:100%;min-width:140px;font-size:.68rem;padding:.25rem .4rem;border:1px solid var(--green);border-radius:5px;background:var(--bg2);color:var(--ink);font-family:var(--ff);resize:vertical' onclick='event.stopPropagation()' placeholder='Observa\u00e7\u00e3o...'>" + obs.replace(/</g,"&lt;") + "</textarea>" +
+        "<textarea id='coi_" + e.id + "' rows='2' style='width:100%;font-size:.68rem;padding:.25rem;border:1px solid var(--green);border-radius:5px;background:var(--bg2);color:var(--ink)'>" + obs.replace(/</g,"&lt;") + "</textarea>" +
         "<div style='display:flex;gap:.3rem;margin-top:.2rem'>" +
-          "<button onclick='event.stopPropagation();saveCicloObs(\"" + e.id + "\",document.getElementById(\"coi_" + e.id + "\").value)' style='font-size:.62rem;padding:.15rem .5rem;background:var(--green);border:none;border-radius:4px;color:#000;font-weight:700;cursor:pointer'>Salvar</button>" +
-          "<button onclick='event.stopPropagation();closeCicloObsEditor(\"" + e.id + "\")' style='font-size:.62rem;padding:.15rem .5rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer'>Cancelar</button>" +
+          "<button onclick='saveCicloObs(\"" + e.id + "\",document.getElementById(\"coi_" + e.id + "\").value)' style='font-size:.62rem;padding:.15rem .5rem;background:var(--green);border:none;border-radius:4px;color:#000;font-weight:700;cursor:pointer'>Salvar</button>" +
+          "<button onclick='closeCicloObsEditor(\"" + e.id + "\")' style='font-size:.62rem;padding:.15rem .5rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer'>Cancelar</button>" +
         "</div>" +
       "</div>";
 
-    var matBadges = mats.length
-      ? "<div style='display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.3rem'>" +
-        mats.map(function(m){
-          var colors = {
-            "Passo Estrat\u00e9gico":"var(--purple)","PDF":"var(--red)","Videoaula":"var(--blue)",
-            "Quest\u00f5es":"var(--gold)","Resumo":"var(--green)","Revis\u00e3o":"var(--green2)","Flashcard":"#f97316"
-          };
-          return "<span style='font-family:var(--fm);font-size:.52rem;padding:.1rem .35rem;border-radius:3px;background:rgba(0,0,0,.15);border:1px solid " + (colors[m]||"var(--bd)") + ";color:" + (colors[m]||"var(--ink3)") + "'>" + m + "</span>";
-        }).join("") + "</div>" : "";
-
-    var linkItems = links ? links.split("\n").filter(function(l){return l.trim();}) : [];
-    var linksHtml = linkItems.length
-      ? "<div style='margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem'>" +
-        linkItems.map(function(l){
-          var url = l.trim();
-          var label = url.replace(/^https?:\/\/(www\.)?/,"").split("/")[0];
-          return "<a href='" + url + "' target='_blank' style='font-size:.65rem;color:var(--green);text-decoration:none;font-family:var(--fm)' title='" + url + "'>\uD83D\uDD17 " + label + "</a>";
-        }).join("") + "</div>" : "";
-
     return "<tr>" +
-      "<td class='tdt' style='cursor:pointer' title='Clique para editar a data' onclick='openDateEditor(\"" + e.id + "\",\"" + studyDate + "\",this)'>" +
-        "<span class='ciclo-date-lbl' id='cdl_" + e.id + "'>" + fmtD(studyDate) + "</span>" +
-        "<br><span style='font-size:.58rem'>" + fmtWd(studyDate) + "</span>" +
-        "<div class='ciclo-date-edit' id='cde_" + e.id + "' style='display:none;margin-top:.3rem'>" +
-          "<input type='date' value='" + studyDate + "' style='font-size:.7rem;padding:.15rem .3rem;border:1px solid var(--green);border-radius:4px;width:110px' onclick='event.stopPropagation()' onchange='saveCicloDate(\"" + e.id + "\",this.value)'>" +
-          "<button onclick='event.stopPropagation();closeDateEditor(\"" + e.id + "\")' style='font-size:.6rem;background:none;border:none;color:var(--ink3);cursor:pointer'>✕</button>" +
-        "</div>" +
-      "</td>" +
+      "<td class='tdt' style='cursor:pointer' onclick='openDateEditor(\"" + e.id + "\",\"" + studyDate + "\",this)'><span id='cdl_" + e.id + "'>" + fmtD(studyDate) + "</span><br><span style='font-size:.58rem'>" + fmtWd(studyDate) + "</span></td>" +
       "<td>" + customTag + "<span class='badge " + dBadge(e.disc) + "'>" + e.disc + prioBadge + fireIcon + "</span></td>" +
       "<td><div style='font-weight:600;font-size:.82rem'>" + (e.topico||e.assunto) + "</div>" + assH + "</td>" +
       "<td style='font-size:.72rem;color:var(--ink3);max-width:110px'>" + (e.sub || "&mdash;") + "</td>" +
-      "<td style='min-width:150px'>" + matBadges + linksHtml + obsCell + "</td>" +
+      "<td style='min-width:150px'>" + obsCell + "</td>" +
       "<td class='tdn'>" + (q||"&mdash;") + "</td>" +
       "<td class='tdn'>" + (a||"&mdash;") + "</td>" +
       "<td><span class='badge " + pCl + "'>" + pStr + "</span></td>" +
       "<td><span class='badge " + sCl + "'>" + sLbl + "</span></td>" +
       "<td><div class='rv'>" + rh + "</div></td>" +
       "<td style='white-space:nowrap'>" +
-        "<button onclick='goToResumoForTopic(\"" + e.id + "\")' title='Abrir/criar resumo deste t\u00f3pico' style='padding:.2rem .45rem;background:none;border:1px solid var(--brand);border-radius:4px;color:var(--brand);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#128220;</button>" +
-        "<button class='cedit' data-eid='" + e.id + "' data-rn='0' onclick='openModal(this.dataset.eid,0)' style='padding:.2rem .45rem' title='Registrar questões'>&#9998;</button>" +
-        "<button onclick='openEntryEditModal(\"" + e.id + "\")' title='Editar tópico/material/links' style='padding:.2rem .45rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#9999;</button>" +
-        "<button onclick='quickResetTopic(" + e.id + ")' title='Zerar dados' style='padding:.2rem .45rem;background:none;border:1px solid #fca5a5;border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#9851;</button>" +
-        "<button onclick='deleteEntryRow(" + e.id + ")' title='Excluir linha inteira' style='padding:.2rem .45rem;background:none;border:1px solid var(--red);border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#128465;</button>" +
+        "<button onclick='goToResumoForTopic(\"" + e.id + "\")' title='Resumo' style='padding:.2rem .45rem;background:none;border:1px solid var(--brand);border-radius:4px;color:var(--brand);cursor:pointer;font-size:.7rem'>📄</button>" +
+        "<button class='cedit' data-eid='" + e.id + "' data-rn='0' onclick='openModal(this.dataset.eid,0)' style='padding:.2rem .45rem' title='Registrar'>✏️</button>" +
+        "<button onclick='deleteEntryRow(" + e.id + ")' title='Excluir' style='padding:.2rem .45rem;background:none;border:1px solid var(--red);border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>🗑️</button>" +
       "</td>" +
       "</tr>";
   }).join("");
 }
-// ── DESEMPENHO ────────────────────────────────────────────────
-function renderDesemp() {
-  var _store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  
-  // -- INÍCIO DA INTELIGÊNCIA (FILTRO DE MATÉRIAS PAUSADAS) --
-  var cicloCfg = _store._cicloConfig || {};
-  var discSettings = cicloCfg.disciplinas || {};
-  // -- FIM DA PREPARAÇÃO --
-
-  var _savedCache = {};
-  function sv(id) {
-    if (!(id in _savedCache)) _savedCache[id] = getSaved(id, _store);
-    return _savedCache[id];
-  }
-  
-  // Aplica o filtro absoluto: O Dashboard só enxergará matérias ativas
-  var rawEntries = getAllEntries();
-  var activeEntries = rawEntries.filter(function(e) {
-    var status = (discSettings[e.disc] || {}).status || "ativa";
-    return status !== "pausada"; // Ignora as matérias pausadas
-  });
-
-  var allDiscs = activeEntries.map(function(e) { return e.disc; });
-  var DS = allDiscs.filter(function(d, i) { return allDiscs.indexOf(d) === i && d; });
-  var byD = {};
-  DS.forEach(function(d) { byD[d] = {q:0,a:0}; });
-  
-  activeEntries.forEach(function(e) {
-    var t = sv(e.id);
-    if (t.q && byD[e.disc]) { byD[e.disc].q += t.q; byD[e.disc].a += t.a; }
-  });
-  
-  var tq=0, ta=0;
-  DS.forEach(function(d) { tq += byD[d].q; ta += byD[d].a; });
-  var st = DS.filter(function(d){ return byD[d].q>0; }).length;
-  var pend = DS.filter(function(d){ return byD[d].q===0; }).length;
-
-  // Stats cards (Agora mostrando apenas o Ciclo Ativo real)
-  document.getElementById("ds-stats").innerHTML =
-    '<div class="sb"><div class="sn">'+tq+'</div><div class="sl">Quest\u00f5es Total</div></div>' +
-    '<div class="sb a"><div class="sn">'+(tq?Math.round(ta/tq*100):0)+'%</div><div class="sl">Taxa Acerto</div></div>' +
-    '<div class="sb"><div class="sn">'+st+'</div><div class="sl">Disc. Iniciadas</div></div>' +
-    '<div class="sb r"><div class="sn">'+pend+'</div><div class="sl">Pendentes</div></div>' +
-    '<div class="sb b"><div class="sn">'+activeEntries.length+'</div><div class="sl">T\u00f3picos no Ciclo</div></div>';
-
-  // Tips (As recomendações não vão mais pedir para você estudar matéria pausada)
-  var tips = [];
-  var iniciadas = DS.filter(function(d){ return byD[d].q>0; });
-  iniciadas.sort(function(a,b){ return (byD[a].q?byD[a].a/byD[a].q:1)-(byD[b].q?byD[b].a/byD[b].q:1); });
-  iniciadas.slice(0,3).forEach(function(d) {
-    var p = byD[d].q ? Math.round(byD[d].a/byD[d].q*100) : 0;
-    var icon = p<50 ? "\uD83D\uDEA8" : p<65 ? "\u26A0\uFE0F" : "\uD83D\uDCA1";
-    var msg = p<50 ? "Refor\u00e7ar urgente \u2014 abaixo de 50%" : p<65 ? "Precisa de aten\u00e7\u00e3o \u2014 abaixo de 65%" : "Pode melhorar \u2014 fa\u00e7a mais quest\u00f5es";
-    var safeD = d.replace(/"/g,"").replace(/'/g,"");
-    tips.push(
-      '<div class="tip-card">' +
-        '<div class="tip-icon">'+icon+'</div>' +
-        '<div class="tip-body">' +
-          '<div class="tip-t">'+d+' &mdash; '+p+'%</div>' +
-          '<div class="tip-d">'+msg+'. <a href="#" class="tip-ask-link" data-disc="'+safeD+'" onclick="tipAsk(this);return false;" style="color:var(--green)">Pedir dica ao Prof. IA &rarr;</a></div>' +
-        '</div>' +
-      '</div>'
-    );
-  });
-  if (!tq) {
-    tips.push('<div class="tip-card"><div class="tip-icon">\uD83D\uDE80</div><div class="tip-body"><div class="tip-t">Vamos come\u00e7ar!</div><div class="tip-d">Registre quest\u00f5es nos t\u00f3picos para ver sua curva de aprendizagem e receber dicas personalizadas.</div></div></div>');
-  }
-  var tipsEl = document.getElementById("ds-tips");
-  if (tipsEl && tips.length) {
-    tipsEl.innerHTML = '<div class="ssub" style="margin-bottom:.7rem">&#128161; Recomenda\u00e7\u00f5es</div><div class="tips-grid">'+tips.join("")+'</div>';
-  }
-
-  // Discipline bars
-  document.getElementById("ds-discs").innerHTML = DS.map(function(d) {
-    var p = byD[d].q ? byD[d].a/byD[d].q : null;
-    var pStr = p!=null ? Math.round(p*100)+"%" : "\u2014";
-    var fill = p ? Math.round(p*100) : 0;
-    var fc = !p?"":p>=0.8?"g":p>=0.6?"a":"r";
-    var col = !p?"var(--ink4)":p>=0.8?"var(--green)":p>=0.6?"var(--gold)":"var(--red)";
-    var bc = byD[d].q?(p>=0.8?"bg":p>=0.6?"ba":"br"):"bk";
-    return '<div class="drow"><div class="dn">'+d+'</div>' +
-      '<div class="dbw"><div class="db"><div class="dbf '+fc+'" style="width:'+fill+'%"></div></div></div>' +
-      '<div class="dp" style="color:'+col+'">'+pStr+'</div>' +
-      '<span class="badge '+bc+'" style="font-size:.53rem">'+(byD[d].q?byD[d].q+"Q":"\u2014")+'</span></div>';
-  }).join("");
-
-  // Topics table
-  var td = getAllEntries().filter(function(e){ return sv(e.id).q>0; })
-    .sort(function(a,b){ var ta2=sv(a.id),tb2=sv(b.id); return (ta2.q?ta2.a/ta2.q:0)-(tb2.q?tb2.a/tb2.q:0); });
-  document.getElementById("ds-topics").innerHTML = td.map(function(e) {
-    var t=sv(e.id), p=t.q?t.a/t.q:0;
-    return '<tr>' +
-      '<td style="padding:.5rem .8rem;font-size:.7rem"><span class="badge '+dBadge(e.disc)+'">'+e.disc+'</span></td>' +
-      '<td style="padding:.5rem .8rem;font-size:.78rem;max-width:160px">'+(e.topico||e.assunto)+'</td>' +
-      '<td style="padding:.5rem .8rem;text-align:center;font-family:var(--fm);font-size:.75rem">'+t.q+'</td>' +
-      '<td style="padding:.5rem .8rem;text-align:center;font-family:var(--fm);font-size:.75rem">'+t.a+'</td>' +
-      '<td style="padding:.5rem .8rem"><span class="badge '+(p>=0.8?"bg":p>=0.6?"ba":"br")+'">'+Math.round(p*100)+'%</span></td>' +
-    '</tr>';
-  }).join("");
-
-  // Charts
-  setTimeout(function() {
-    // Bar chart
-    var cDisc = document.getElementById("chart-disc");
-    if (cDisc && typeof Chart !== "undefined") {
-      if (cDisc._chart) cDisc._chart.destroy();
-      var dLabels = DS.filter(function(d){return byD[d].q>0;});
-      var dData = dLabels.map(function(d){return byD[d].q?Math.round(byD[d].a/byD[d].q*100):0;});
-      cDisc._chart = new Chart(cDisc, {
-        type:"bar",
-        data:{
-          labels:dLabels.map(function(d){return d.length>12?d.slice(0,11)+"\u2026":d;}),
-          datasets:[{label:"% Acerto",data:dData,
-            backgroundColor:dData.map(function(v){return v>=80?"rgba(45,212,191,.8)":v>=60?"rgba(255,184,77,.8)":"rgba(255,107,129,.8)";}),
-            borderRadius:6,borderSkipped:false}]
-        },
-        options:{responsive:true,plugins:{legend:{display:false}},
-          scales:{y:{beginAtZero:true,max:100,ticks:{color:"rgba(141,135,196,.75)",callback:function(v){return v+"%"}},grid:{color:"rgba(255,255,255,.05)"}},
-                 x:{ticks:{color:"rgba(141,135,196,.75)",font:{size:10}},grid:{display:false}}}}
-      });
-    }
-    // Learning curve
-    var cCurve = document.getElementById("chart-curve");
-    if (cCurve && typeof Chart !== "undefined") {
-      if (cCurve._chart) cCurve._chart.destroy();
-      var store=JSON.parse(localStorage.getItem("cldf_v2")||"{}");
-      var sessions=[];
-      Object.keys(store).forEach(function(k){
-        var ud=store[k];
-        if(ud&&ud.sessions) ud.sessions.forEach(function(s){if(s.q>0&&s.date)sessions.push({date:s.date,q:s.q,a:s.a});});
-      });
-      sessions.sort(function(a,b){return a.date.localeCompare(b.date);});
-      var byDate={};
-      sessions.forEach(function(s){if(!byDate[s.date])byDate[s.date]={q:0,a:0};byDate[s.date].q+=s.q;byDate[s.date].a+=s.a;});
-      var dates=Object.keys(byDate).sort();
-      var cumQ=0,cumA=0;
-      var pcts=dates.map(function(d){cumQ+=byDate[d].q;cumA+=byDate[d].a;return cumQ?Math.round(cumA/cumQ*100):0;});
-      if(dates.length>=2){
-        cCurve._chart=new Chart(cCurve,{type:"line",
-          data:{labels:dates.map(function(d){return fmtD(d);}),
-            datasets:[{label:"% Acerto Acumulado",data:pcts,borderColor:"rgba(139,127,255,1)",backgroundColor:"rgba(139,127,255,.12)",fill:true,tension:.4,pointBackgroundColor:"rgba(139,127,255,1)",pointRadius:4}]},
-          options:{responsive:true,plugins:{legend:{display:false}},
-            scales:{y:{beginAtZero:true,max:100,ticks:{color:"rgba(141,135,196,.75)",callback:function(v){return v+"%"}},grid:{color:"rgba(255,255,255,.05)"}},
-                   x:{ticks:{color:"rgba(141,135,196,.75)",font:{size:10},maxRotation:45},grid:{display:false}}}}
-        });
-      } else {
-        cCurve.parentElement.innerHTML='<h3>&#128200; Curva de Aprendizagem <span>sess\u00f5es ao longo do tempo</span></h3><div style="color:var(--ink4);font-size:.8rem;text-align:center;padding:3rem 1rem">Registre sess\u00f5es em mais t\u00f3picos para ver a curva</div>';
-      }
-    }
-  }, 120);
-}
-
 
 function importData(event) {
   var file = event.target.files[0];
@@ -6606,40 +6422,36 @@ function debugLS() {
 
 // ── RESET CICLO ───────────────────────────────────────────────
 
+// ── CORREÇÃO: REDEFINIR DATAS IGNORANDO MATÉRIAS PAUSADAS ─────
 function resetDates() {
   var start = document.getElementById("reset-start").value;
   var daily = parseInt(document.getElementById("reset-daily").value) || 1;
   var scope = document.getElementById("reset-scope").value;
   var order = document.getElementById("reset-order").value;
   var respectManual = document.getElementById("reset-respect-manual") ? document.getElementById("reset-respect-manual").checked : true;
-  if (!start) { toast("\u26a0 Selecione uma data de in\u00edcio"); return; }
+  if (!start) { toast("⚠️ Selecione uma data de início"); return; }
 
   try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
     var all = getAllEntries();
 
-    // Filter which entries to reset
     var targets = all.filter(function(e) {
+      var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+      if (statusDisc === "pausada") return false; // IGNORA MATÉRIAS PAUSADAS
+
       var ud = store["e" + e.id + "_r0"] || {};
-      // Preserva tópicos com data alterada manualmente (a menos que o
-      // usuário desmarque a proteção de propósito) — sem isso, Redefinir
-      // Datas sobrescrevia silenciosamente qualquer ajuste manual feito
-      // no Ciclo.
       if (respectManual && ud._manualDate) return false;
       if (scope === "pending") {
-        var st = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
+        var st = ud.status || (e.ok === "✅" ? "ok" : "pend");
         return st !== "ok";
       }
-      return true; // all
+      return true;
     });
-    var manualCount = respectManual
-      ? all.filter(function(e) { return (store["e" + e.id + "_r0"] || {})._manualDate; }).length
-      : 0;
 
-    // Alternar entre disciplinas: reorganiza os tópicos em round-robin
-    // (1 de cada disciplina por vez, repetindo o ciclo) pra nunca cair
-    // vários dias seguidos na mesma disciplina — em vez de manter a
-    // ordem "crua" em que os tópicos foram salvos.
+    if (!targets.length) { toast("⚠️ Nenhum tópico ativo para redefinir."); return; }
+
     if (order === "interleave") {
       var byDisc = {}, discOrder = [];
       targets.forEach(function(e) {
@@ -6653,37 +6465,31 @@ function resetDates() {
         keepGoing = false;
         discOrder.forEach(function(d) {
           var q = byDisc[d];
-          if (q.length) {
-            interleaved.push(q.shift());
-            keepGoing = true;
-          }
+          if (q.length) { interleaved.push(q.shift()); keepGoing = true; }
         });
       }
       targets = interleaved;
     }
 
-    // Distribute: respect daily limit
     var dayOffset = 0, countOnDay = 0;
     targets.forEach(function(e) {
       if (countOnDay >= daily) { dayOffset++; countOnDay = 0; }
       var newDate = addDays(start, dayOffset);
       countOnDay++;
 
-      // Update study date, keep q/a/sessions, clear status
       var k0 = "e" + e.id + "_r0";
       var ud0 = store[k0] || {};
       ud0.date = newDate;
-      delete ud0._manualDate; // reset explícito limpa a marca de manual
-      if (scope === "all") ud0.status = "pend"; // reset status too
+      delete ud0._manualDate;
+      if (scope === "all") ud0.status = "pend";
       store[k0] = ud0;
 
-      // Recalculate all revision dates from new study date
       (e.revs || []).forEach(function(r, idx) {
         var kr = "e" + e.id + "_r" + r.num;
         var udr = store[kr] || {};
         var interval = REV_INTERVALS[idx] !== undefined ? REV_INTERVALS[idx] : (idx + 1) * 30;
         udr.date = addDays(newDate, interval);
-        if (scope === "all") udr.status = "pend"; // reset revision status too
+        if (scope === "all") udr.status = "pend";
         store[kr] = udr;
       });
     });
@@ -6691,8 +6497,7 @@ function resetDates() {
     delete store._rolloverDate;
     lset(store);
     initAllMaps();
-    var manualMsg2 = manualCount ? " (" + manualCount + " com data manual preservada)" : "";
-    toast("\u2713 " + targets.length + " t\u00f3picos replanejados a partir de " + fmtD(start) + "!" + manualMsg2);
+    toast("✓ " + targets.length + " tópicos ativos realocados a partir de " + fmtD(start) + "!");
     reAll();
   } catch(ex) {
     alert("Erro: " + ex.message);
