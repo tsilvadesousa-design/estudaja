@@ -17,7 +17,7 @@
   } catch(e) {}
 })();
 // =====================================================================
-// CONEXÃO DA INTERFACE COM O MOTOR INTELIGENTE (CORRIGIDO)
+// CONEXÃO DA INTERFACE COM O MOTOR INTELIGENTE (FASE 1 e 2)
 // =====================================================================
 
 function salvarConfigGlobais() {
@@ -40,22 +40,13 @@ function renderVisaoGeral() {
     var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
     var simultaneas = Number(cicloCfg.numSimult) || 4;
     
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
+    var allEntries = getAllEntries();
     var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
     var htmlMetas = "";
     
-    var discUnicas = [];
-    allEntries.forEach(function(e) {
-        if (e.disc && discUnicas.indexOf(e.disc) === -1) discUnicas.push(e.disc);
-    });
-
-    if (discUnicas.length === 0) {
-        container.innerHTML = '<p style="font-size:0.85rem; color:var(--ink3);">Nenhuma disciplina encontrada. Importe um edital na aba Gerenciar.</p>';
-        return;
-    }
-
-    discUnicas.forEach(function(dName) {
-        var cfg = discSettings[dName] || { status: "ativa", prioridade: 3, frequenciaDesejada: 1, cargaHoraria: 3, prazoDiasRestantes: 30 };
+    var discNames = Object.keys(discSettings);
+    discNames.forEach(function(dName) {
+        var cfg = discSettings[dName];
         if (cfg.status === "pausada") {
             pausadas++;
         } else {
@@ -71,6 +62,7 @@ function renderVisaoGeral() {
                 return e.disc === dName && stat !== "ok";
             }).length;
 
+            // Motor de Viabilidade: Estima 30 min por tópico pendente (0.5h)
             var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
             var statusViabilidade = "✅ Viável";
             var corViab = "var(--green)";
@@ -78,14 +70,14 @@ function renderVisaoGeral() {
             if (pendentes === 0) {
                 statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
             } else if (horasNecessariasPorSem > carga * 1.5) {
-                statusViabilidade = "❌ Incompatível (Meta exige ~"+horasNecessariasPorSem.toFixed(1)+"h/sem)"; corViab = "var(--red)";
+                statusViabilidade = "❌ Incompatível (Meta exige ~"+horasNecessariasPorSem.toFixed(1)+"h/sem. Aumente o prazo ou a carga)"; corViab = "var(--red)";
             } else if (horasNecessariasPorSem > carga) {
-                statusViabilidade = "⚠️ Apertada (Exigirá foco extra)"; corViab = "var(--gold)";
+                statusViabilidade = "⚠️ Apertada (Vai exigir dedicação extra)"; corViab = "orange";
             }
 
             htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
-                '<b style="color:var(--fg);">'+dName+'</b> (Prioridade: '+cfg.prioridade+' | Carga: '+carga+'h/sem)<br>' +
-                'Pendentes: <b>'+pendentes+' tópicos</b> | Prazo: <b>'+prazoDias+' dias</b><br>' +
+                '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
+                'Meta: <b>'+prazoDias+' dias</b> | Carga separada: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
                 '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
             '</div>';
         }
@@ -93,20 +85,25 @@ function renderVisaoGeral() {
 
     var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
     
-    container.innerHTML = 
+    var htmlPainel = '' +
         '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem; color:var(--ink2);">Matérias Ativas</span>' +
+                '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span>' +
             '</div>' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem; color:var(--ink2);">Pausadas / Ocultas</span>' +
+                '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span>' +
             '</div>' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem; color:var(--ink2);">Carga Alocada / Limite</span>' +
+                '<h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span>' +
+            '</div>' +
+            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span>' +
             '</div>' +
         '</div>' +
-        '<h4 style="margin:0 0 0.8rem 0; color:var(--fg);">Diagnóstico de Viabilidade das Metas</h4>' +
-        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina ativa.</span>");
+        '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas (Matérias Ativas)</h4>' +
+        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina configurada ou ativa ainda. Expanda o módulo 'Disciplinas' para configurar.</span>");
+        
+    container.innerHTML = htmlPainel;
 }
 
 function renderDisciplinasInteligente() {
@@ -116,8 +113,7 @@ function renderDisciplinasInteligente() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
-    
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
+    var allEntries = getAllEntries();
     
     var disciplinasUnicas = [];
     allEntries.forEach(function(e) {
@@ -125,32 +121,32 @@ function renderDisciplinasInteligente() {
     });
 
     if (disciplinasUnicas.length === 0) {
-        container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada. Importe um edital primeiro.</div>';
+        container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada.</div>';
         return;
     }
 
     var html = "";
     disciplinasUnicas.forEach(function(dName) {
-        var cfg = discSettings[dName] || { status: "ativa", prioridade: 3, frequenciaDesejada: 1, cargaHoraria: 3, prazoDiasRestantes: 30 };
+        var cfg = discSettings[dName] || {};
         var status = cfg.status || "ativa";
         var prioridade = cfg.prioridade || 3;
         var frequencia = cfg.frequenciaDesejada || 1;
         var prazo = cfg.prazoDiasRestantes || 30;
-        var carga = cfg.cargaHoraria || 3;
+        var carga = cfg.cargaHoraria || 3; // Nova propriedade
         var isPausada = (status !== "ativa");
         var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
 
         html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
-                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">' +
-                    '<h3 style="margin:0; font-size:1rem; color:var(--fg);">'+dName+'</h3>' +
-                    '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px 8px; border-radius: 4px; font-weight:700;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
+                '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
+                    '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
+                    '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
                 '</div>' +
-                '<div style="display:flex; flex-wrap:wrap; gap: 0.8rem;">' +
-                    '<div style="flex:1; min-width:110px;"><label style="font-size:0.7rem; color:var(--ink2);">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.4rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada (Ocultar)</option></select></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem; color:var(--ink2);">Prioridade (1-5)</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.4rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem; color:var(--ink2);">Sessões/Sem</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.4rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:90px;"><label style="font-size:0.7rem; color:var(--ink2);">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.4rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:90px;"><label style="font-size:0.7rem; color:var(--ink2);">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.4rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
+                '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
+                    '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
                 '</div>' +
             '</div>';
     });
@@ -173,16 +169,8 @@ function salvarConfigDisciplina(dName, dNameId) {
 
     lset(store); 
     renderDisciplinasInteligente(); 
-    renderVisaoGeral(); 
-    toast("✓ Configuração de " + dName + " salva!");
+    renderVisaoGeral(); // Recalcula o painel dinamicamente
 }
-
-// Força a carga imediata quando a aba Gerenciar for aberta
-window.initGerenciar = function() {
-    renderDisciplinasInteligente();
-    renderVisaoGeral();
-};
-// =====================================================================
 
 function salvarIntervalosRevisao() {
     var val = document.getElementById("rev-intervals-input").value;
@@ -917,13 +905,12 @@ select option{background:var(--bg3)}
     <button class="nbtn" onclick="showPage('resumos',this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9a3 3 0 0 1 3 3v15l-7.5-4L3 21V6a3 3 0 0 1 3-3z"/><path d="M8.5 8h6M8.5 11.3h6"/></svg> Resumos</button>
     <button class="nbtn" onclick="showPage('gerenciar',this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h11M19 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg> Gerenciar</button>
   </nav>
-<div class="nav-right">
-    <span id="save-indicator" style="font-family:var(--fm);font-size:.62rem;color:var(--green);white-space:nowrap">✓ Salvo</span>
-    <button class="btn-exp" onclick="exportData()">📥 Exportar</button>
-    <button class="btn-exp" onclick="document.getElementById('imp').click()">📤 Importar</button>
-    <button id="theme-toggle-btn" class="btn-exp" onclick="toggleTheme()" title="Alternar modo dia/noite">🌙</button>
-    <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
-  </div>
+  <div class="nav-right">
+    <div id="fb-user-badge" style="display:none;align-items:center;gap:.4rem;font-size:.68rem;color:var(--ink2)">
+      <span>&#128100; <b id="fb-user-name"></b></span>
+      <button class="btn-exp" onclick="authLogout()" style="padding:.2rem .5rem">Sair</button>
+      <div class="nav-divider"></div>
+    </div>
     <span id="save-indicator" style="font-family:var(--fm);font-size:.62rem;color:var(--green);white-space:nowrap" title="Confirma que suas altera&#231;&#245;es est&#227;o sendo salvas automaticamente no navegador">&#10003; Salvo</span>
     <span class="nav-date-txt" id="nav-dt"></span>
     <div class="nav-divider"></div>
@@ -2556,7 +2543,7 @@ var _fbSavingRemote = false; // evita reenviar de volta o dado que acabamos de r
 
 function getFirebaseConfig() {
   return {
-    apiKey: "",
+    apiKey: "AIzaSyBWK5BOwUirKcAyWFFAWjwdcZRK-QyPIbI",
     authDomain: "estudaja-ea3e4.firebaseapp.com",
     projectId: "estudaja-ea3e4",
     storageBucket: "estudaja-ea3e4.firebasestorage.app",
@@ -2576,7 +2563,7 @@ function initFirebase() {
     if (!fbApp) {
 if (!firebase.apps.length) {
     firebase.initializeApp({
-        apiKey: "",
+        apiKey: "AIzaSyBWK5BOwUirKcAyWFfAWjwdcZRK-QyPibI",
         authDomain: "estudaja-ea3e4.firebaseapp.com",
         projectId: "estudaja-ea3e4",
         storageBucket: "estudaja-ea3e4.firebasestorage.app",
@@ -2893,16 +2880,53 @@ function dBadge(d) {
   return m[d] || "bk";
 }
 
-// ── AGENDA INDEX ──────────────────────────────────────────────
+// ── AGENDA INDEX (DINÂMICO E CORRIGIDO) ────────────────────────
 var agMap = {};
-ENTRIES.forEach(function(e) {
-  function push(ds, tipo, rn) {
-    if (!agMap[ds]) agMap[ds] = [];
-    agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
-  }
-  push(e.date, "NOVO", 0);
-  (e.revs || []).forEach(function(r) { push(r.date, "REV", r.num); });
-});
+
+function initAllMaps() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
+
+    agMap = {}; // Limpa o mapa antigo para reconstruir com as datas novas
+
+    allEntries.forEach(function(e) {
+        // Ignora totalmente as matérias pausadas na Agenda
+        var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+        if (statusDisc === "pausada") return;
+
+        function push(ds, tipo, rn) {
+            if (!ds) return;
+            if (!agMap[ds]) agMap[ds] = [];
+            agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+        }
+
+        // Usa a data do LocalStorage (replanejada) em vez da data fixa do JSON
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        var studyDate = ud0.date || e.date;
+        push(studyDate, "NOVO", 0);
+
+        (e.revs || []).forEach(function(r) {
+            var udr = store["e" + e.id + "_r" + r.num] || {};
+            var revDate = udr.date || r.date;
+            push(revDate, "REV", r.num);
+        });
+    });
+}
+
+// Recarrega todos os dados visuais
+function reAll() {
+    initAllMaps();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    if (typeof renderCiclo === 'function') renderCiclo();
+    if (typeof renderDesemp === 'function') renderDesemp();
+    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+}
+
+// Inicializa a agenda logo no carregamento com as datas atuais e atualizadas
+initAllMaps();
+
 
 // ── CARD HTML ─────────────────────────────────────────────────
 function makeCard(item, store) {
@@ -4087,30 +4111,28 @@ function calcularScoreDisciplina(disciplina) {
 }
 // --- FIM DO MOTOR INTELIGENTE ---
 
-// ── CORREÇÃO: FILTRAR MATÉRIAS PAUSADAS NO CICLO ────────────────
+
 function renderCiclo() {
   var s = (document.getElementById("ciclo-s").value || "").toLowerCase();
   var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
   
+  // -- INÍCIO DA INTELIGÊNCIA VISUAL --
   var cicloCfg = store._cicloConfig || {};
   var discSettings = cicloCfg.disciplinas || {};
   var allEntries = getAllEntries();
   
-  // FILTRAGEM ABSOLUTA: Remove matérias pausadas/ocultas da exibição do Ciclo
-  allEntries = allEntries.filter(function(e) {
-    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
-    return statusDisc !== "pausada";
-  });
-
+  // Pré-calcula quantos tópicos pendentes cada matéria tem no banco total
+  // (Precisamos disso para o Alerta de Fogo 🔥 funcionar com precisão)
   var pendentesPorDisc = {};
   allEntries.forEach(function(ex) {
     var udx = store["e" + ex.id + "_r0"] || {};
-    var statx = udx.status || (ex.ok === "✅" ? "ok" : "pend");
+    var statx = udx.status || (ex.ok === "\u2705" ? "ok" : "pend");
     if (statx !== "ok") {
       var d = ex.disc || "";
       pendentesPorDisc[d] = (pendentesPorDisc[d] || 0) + 1;
     }
   });
+  // -- FIM DA PREPARAÇÃO --
 
   var rows = allEntries;
   if (typeof _df !== 'undefined' && _df) rows = rows.filter(function(e) { return e.disc === _df; });
@@ -4118,29 +4140,28 @@ function renderCiclo() {
     return (e.disc + e.topico + e.assunto + e.sub).toLowerCase().indexOf(s) >= 0;
   });
 
+  // Ordena pela data EFETIVA de estudo
   rows = rows.map(function(e) {
     var ud0 = store["e" + e.id + "_r0"] || {};
     e._sortDate = ud0.date || e.date || "";
     return e;
   }).sort(function(a, b) { return a._sortDate < b._sortDate ? -1 : a._sortDate > b._sortDate ? 1 : 0; });
   
-  var cntEl = document.getElementById("ciclo-cnt");
-  if (cntEl) cntEl.textContent = rows.length + " tópico" + (rows.length !== 1 ? "s" : "") + " encontrado" + (rows.length !== 1 ? "s" : "");
+  document.getElementById("ciclo-cnt").textContent =
+    rows.length + " t\u00f3pico" + (rows.length !== 1 ? "s" : "") + " encontrado" + (rows.length !== 1 ? "s" : "");
     
-  var bodyEl = document.getElementById("ciclo-body");
-  if (!bodyEl) return;
-
-  bodyEl.innerHTML = rows.map(function(e) {
+  document.getElementById("ciclo-body").innerHTML = rows.map(function(e) {
     var t = getSaved(e.id, store);
     var q = t.q, a = t.a, pct = q ? a/q : 0;
     var ud = store["e" + e.id + "_r0"] || {};
-    var status = ud.status || (e.ok === "✅" ? "ok" : "pend");
+    var status = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
     var studyDate = ud.date || e.date;
     var pStr = pct ? Math.round(pct*100) + "%" : "&mdash;";
     var pCl = pct >= 0.8 ? "bg" : pct >= 0.6 ? "ba" : pct > 0 ? "br" : "bk";
     var sCl = status === "ok" ? "bg" : status === "skip" ? "bo" : "bk";
-    var sLbl = status === "ok" ? "✓ OK" : status === "skip" ? "↗ Adiado" : "Pendente";
+    var sLbl = status === "ok" ? "&#10003; OK" : status === "skip" ? "&#8599; Adiado" : "Pendente";
 
+    // -- INJEÇÃO DOS BADGES INTELIGENTES NA MATÉRIA --
     var cfg = discSettings[e.disc] || {};
     var prioridade = cfg.prioridade || 3;
     var carga = Number(cfg.cargaHoraria) || 3;
@@ -4148,11 +4169,13 @@ function renderCiclo() {
     var semanas = prazoDias / 7 || 1;
     var pendentes = pendentesPorDisc[e.disc] || 0;
     
+    // Motor de urgência: se exige mais horas do que as alocadas, acende o alerta
     var horasNecessarias = (pendentes * 0.5) / semanas;
     var isTight = (horasNecessarias > carga); 
     
     var prioBadge = "<span style='font-size:0.55rem; margin-left:6px; padding:1px 4px; border-radius:3px; background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.3); color:inherit' title='Prioridade configurada'>P" + prioridade + "</span>";
-    var fireIcon = isTight ? "<span title='Prazo Apertado/Incompatível' style='margin-left:4px; font-size:0.8rem;'>🔥</span>" : "";
+    var fireIcon = isTight ? "<span title='Prazo Apertado/Incompatível (Foco Total)' style='margin-left:4px; font-size:0.8rem; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.5));'>🔥</span>" : "";
+    // -- FIM DA INJEÇÃO --
 
     var rh = "";
     var doneCount = 0;
@@ -4168,43 +4191,228 @@ function renderCiclo() {
         rh += "<span class='rd " + rc + "' title='" + fmtD(revDate) + "'>R" + r.num + " " + fmtD(revDate) + "</span>";
       }
     });
-    if (doneCount > 0) rh = "<span class='rd done'>✓" + doneCount + "</span> " + rh;
+    if (doneCount > 0) rh = "<span class='rd done'>&#10003;" + doneCount + "</span> " + rh;
 
-    var assH = (e.assunto && e.assunto !== e.topico) ? "<div style='font-size:.72rem;color:var(--ink3)'>" + e.assunto + "</div>" : "";
+    var assH = (e.assunto && e.assunto !== e.topico) ?
+      "<div style='font-size:.72rem;color:var(--ink3)'>" + e.assunto + "</div>" : "";
     var customTag = e.custom ? "<span class='badge bo' style='font-size:.5rem'>custom</span> " : "";
-    var obs = ud.note || ud._obs || "";
-    var mats = ud._material || [];
-    var links = ud._links || "";
 
-    var obsLbl = obs ? "<div style='font-size:.68rem;color:var(--ink3);white-space:pre-wrap'>" + obs.slice(0,100).replace(/</g,"&lt;") + (obs.length>100?"...":"") + "</div>" : "<div style='font-size:.68rem;color:var(--ink4);font-style:italic'>+ observação</div>";
-    var obsCell = "<div id='cob_" + e.id + "' style='cursor:pointer' onclick='openCicloObsEditor(\"" + e.id + "\")'>" + obsLbl + "</div>" +
+    var obs   = ud.note || ud._obs || "";
+    var mats  = ud._material || [];
+    var links = ud._links    || "";
+
+    var obsLbl = obs
+      ? "<div style='font-size:.68rem;color:var(--ink3);white-space:pre-wrap'>" + obs.slice(0,100).replace(/</g,"&lt;") + (obs.length>100?"...":"") + "</div>"
+      : "<div style='font-size:.68rem;color:var(--ink4);font-style:italic'>+ observa&#231;&#227;o</div>";
+    var obsCell =
+      "<div id='cob_" + e.id + "' style='cursor:pointer' title='Clique para editar a observa\u00e7\u00e3o' onclick='openCicloObsEditor(\"" + e.id + "\")'>" + obsLbl + "</div>" +
       "<div id='coe_" + e.id + "' style='display:none;margin-top:.25rem'>" +
-        "<textarea id='coi_" + e.id + "' rows='2' style='width:100%;font-size:.68rem;padding:.25rem;border:1px solid var(--green);border-radius:5px;background:var(--bg2);color:var(--ink)'>" + obs.replace(/</g,"&lt;") + "</textarea>" +
+        "<textarea id='coi_" + e.id + "' rows='2' style='width:100%;min-width:140px;font-size:.68rem;padding:.25rem .4rem;border:1px solid var(--green);border-radius:5px;background:var(--bg2);color:var(--ink);font-family:var(--ff);resize:vertical' onclick='event.stopPropagation()' placeholder='Observa\u00e7\u00e3o...'>" + obs.replace(/</g,"&lt;") + "</textarea>" +
         "<div style='display:flex;gap:.3rem;margin-top:.2rem'>" +
-          "<button onclick='saveCicloObs(\"" + e.id + "\",document.getElementById(\"coi_" + e.id + "\").value)' style='font-size:.62rem;padding:.15rem .5rem;background:var(--green);border:none;border-radius:4px;color:#000;font-weight:700;cursor:pointer'>Salvar</button>" +
-          "<button onclick='closeCicloObsEditor(\"" + e.id + "\")' style='font-size:.62rem;padding:.15rem .5rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer'>Cancelar</button>" +
+          "<button onclick='event.stopPropagation();saveCicloObs(\"" + e.id + "\",document.getElementById(\"coi_" + e.id + "\").value)' style='font-size:.62rem;padding:.15rem .5rem;background:var(--green);border:none;border-radius:4px;color:#000;font-weight:700;cursor:pointer'>Salvar</button>" +
+          "<button onclick='event.stopPropagation();closeCicloObsEditor(\"" + e.id + "\")' style='font-size:.62rem;padding:.15rem .5rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer'>Cancelar</button>" +
         "</div>" +
       "</div>";
 
+    var matBadges = mats.length
+      ? "<div style='display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.3rem'>" +
+        mats.map(function(m){
+          var colors = {
+            "Passo Estrat\u00e9gico":"var(--purple)","PDF":"var(--red)","Videoaula":"var(--blue)",
+            "Quest\u00f5es":"var(--gold)","Resumo":"var(--green)","Revis\u00e3o":"var(--green2)","Flashcard":"#f97316"
+          };
+          return "<span style='font-family:var(--fm);font-size:.52rem;padding:.1rem .35rem;border-radius:3px;background:rgba(0,0,0,.15);border:1px solid " + (colors[m]||"var(--bd)") + ";color:" + (colors[m]||"var(--ink3)") + "'>" + m + "</span>";
+        }).join("") + "</div>" : "";
+
+    var linkItems = links ? links.split("\n").filter(function(l){return l.trim();}) : [];
+    var linksHtml = linkItems.length
+      ? "<div style='margin-top:.3rem;display:flex;flex-direction:column;gap:.15rem'>" +
+        linkItems.map(function(l){
+          var url = l.trim();
+          var label = url.replace(/^https?:\/\/(www\.)?/,"").split("/")[0];
+          return "<a href='" + url + "' target='_blank' style='font-size:.65rem;color:var(--green);text-decoration:none;font-family:var(--fm)' title='" + url + "'>\uD83D\uDD17 " + label + "</a>";
+        }).join("") + "</div>" : "";
+
     return "<tr>" +
-      "<td class='tdt' style='cursor:pointer' onclick='openDateEditor(\"" + e.id + "\",\"" + studyDate + "\",this)'><span id='cdl_" + e.id + "'>" + fmtD(studyDate) + "</span><br><span style='font-size:.58rem'>" + fmtWd(studyDate) + "</span></td>" +
+      "<td class='tdt' style='cursor:pointer' title='Clique para editar a data' onclick='openDateEditor(\"" + e.id + "\",\"" + studyDate + "\",this)'>" +
+        "<span class='ciclo-date-lbl' id='cdl_" + e.id + "'>" + fmtD(studyDate) + "</span>" +
+        "<br><span style='font-size:.58rem'>" + fmtWd(studyDate) + "</span>" +
+        "<div class='ciclo-date-edit' id='cde_" + e.id + "' style='display:none;margin-top:.3rem'>" +
+          "<input type='date' value='" + studyDate + "' style='font-size:.7rem;padding:.15rem .3rem;border:1px solid var(--green);border-radius:4px;width:110px' onclick='event.stopPropagation()' onchange='saveCicloDate(\"" + e.id + "\",this.value)'>" +
+          "<button onclick='event.stopPropagation();closeDateEditor(\"" + e.id + "\")' style='font-size:.6rem;background:none;border:none;color:var(--ink3);cursor:pointer'>✕</button>" +
+        "</div>" +
+      "</td>" +
       "<td>" + customTag + "<span class='badge " + dBadge(e.disc) + "'>" + e.disc + prioBadge + fireIcon + "</span></td>" +
       "<td><div style='font-weight:600;font-size:.82rem'>" + (e.topico||e.assunto) + "</div>" + assH + "</td>" +
       "<td style='font-size:.72rem;color:var(--ink3);max-width:110px'>" + (e.sub || "&mdash;") + "</td>" +
-      "<td style='min-width:150px'>" + obsCell + "</td>" +
+      "<td style='min-width:150px'>" + matBadges + linksHtml + obsCell + "</td>" +
       "<td class='tdn'>" + (q||"&mdash;") + "</td>" +
       "<td class='tdn'>" + (a||"&mdash;") + "</td>" +
       "<td><span class='badge " + pCl + "'>" + pStr + "</span></td>" +
       "<td><span class='badge " + sCl + "'>" + sLbl + "</span></td>" +
       "<td><div class='rv'>" + rh + "</div></td>" +
       "<td style='white-space:nowrap'>" +
-        "<button onclick='goToResumoForTopic(\"" + e.id + "\")' title='Resumo' style='padding:.2rem .45rem;background:none;border:1px solid var(--brand);border-radius:4px;color:var(--brand);cursor:pointer;font-size:.7rem'>📄</button>" +
-        "<button class='cedit' data-eid='" + e.id + "' data-rn='0' onclick='openModal(this.dataset.eid,0)' style='padding:.2rem .45rem' title='Registrar'>✏️</button>" +
-        "<button onclick='deleteEntryRow(" + e.id + ")' title='Excluir' style='padding:.2rem .45rem;background:none;border:1px solid var(--red);border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>🗑️</button>" +
+        "<button onclick='goToResumoForTopic(\"" + e.id + "\")' title='Abrir/criar resumo deste t\u00f3pico' style='padding:.2rem .45rem;background:none;border:1px solid var(--brand);border-radius:4px;color:var(--brand);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#128220;</button>" +
+        "<button class='cedit' data-eid='" + e.id + "' data-rn='0' onclick='openModal(this.dataset.eid,0)' style='padding:.2rem .45rem' title='Registrar questões'>&#9998;</button>" +
+        "<button onclick='openEntryEditModal(\"" + e.id + "\")' title='Editar tópico/material/links' style='padding:.2rem .45rem;background:none;border:1px solid var(--bd);border-radius:4px;color:var(--ink3);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#9999;</button>" +
+        "<button onclick='quickResetTopic(" + e.id + ")' title='Zerar dados' style='padding:.2rem .45rem;background:none;border:1px solid #fca5a5;border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#9851;</button>" +
+        "<button onclick='deleteEntryRow(" + e.id + ")' title='Excluir linha inteira' style='padding:.2rem .45rem;background:none;border:1px solid var(--red);border-radius:4px;color:var(--red);cursor:pointer;font-size:.7rem;margin-left:.2rem'>&#128465;</button>" +
       "</td>" +
       "</tr>";
   }).join("");
 }
+// ── DESEMPENHO ────────────────────────────────────────────────
+function renderDesemp() {
+  var _store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+  
+  // -- INÍCIO DA INTELIGÊNCIA (FILTRO DE MATÉRIAS PAUSADAS) --
+  var cicloCfg = _store._cicloConfig || {};
+  var discSettings = cicloCfg.disciplinas || {};
+  // -- FIM DA PREPARAÇÃO --
+
+  var _savedCache = {};
+  function sv(id) {
+    if (!(id in _savedCache)) _savedCache[id] = getSaved(id, _store);
+    return _savedCache[id];
+  }
+  
+  // Aplica o filtro absoluto: O Dashboard só enxergará matérias ativas
+  var rawEntries = getAllEntries();
+  var activeEntries = rawEntries.filter(function(e) {
+    var status = (discSettings[e.disc] || {}).status || "ativa";
+    return status !== "pausada"; // Ignora as matérias pausadas
+  });
+
+  var allDiscs = activeEntries.map(function(e) { return e.disc; });
+  var DS = allDiscs.filter(function(d, i) { return allDiscs.indexOf(d) === i && d; });
+  var byD = {};
+  DS.forEach(function(d) { byD[d] = {q:0,a:0}; });
+  
+  activeEntries.forEach(function(e) {
+    var t = sv(e.id);
+    if (t.q && byD[e.disc]) { byD[e.disc].q += t.q; byD[e.disc].a += t.a; }
+  });
+  
+  var tq=0, ta=0;
+  DS.forEach(function(d) { tq += byD[d].q; ta += byD[d].a; });
+  var st = DS.filter(function(d){ return byD[d].q>0; }).length;
+  var pend = DS.filter(function(d){ return byD[d].q===0; }).length;
+
+  // Stats cards (Agora mostrando apenas o Ciclo Ativo real)
+  document.getElementById("ds-stats").innerHTML =
+    '<div class="sb"><div class="sn">'+tq+'</div><div class="sl">Quest\u00f5es Total</div></div>' +
+    '<div class="sb a"><div class="sn">'+(tq?Math.round(ta/tq*100):0)+'%</div><div class="sl">Taxa Acerto</div></div>' +
+    '<div class="sb"><div class="sn">'+st+'</div><div class="sl">Disc. Iniciadas</div></div>' +
+    '<div class="sb r"><div class="sn">'+pend+'</div><div class="sl">Pendentes</div></div>' +
+    '<div class="sb b"><div class="sn">'+activeEntries.length+'</div><div class="sl">T\u00f3picos no Ciclo</div></div>';
+
+  // Tips (As recomendações não vão mais pedir para você estudar matéria pausada)
+  var tips = [];
+  var iniciadas = DS.filter(function(d){ return byD[d].q>0; });
+  iniciadas.sort(function(a,b){ return (byD[a].q?byD[a].a/byD[a].q:1)-(byD[b].q?byD[b].a/byD[b].q:1); });
+  iniciadas.slice(0,3).forEach(function(d) {
+    var p = byD[d].q ? Math.round(byD[d].a/byD[d].q*100) : 0;
+    var icon = p<50 ? "\uD83D\uDEA8" : p<65 ? "\u26A0\uFE0F" : "\uD83D\uDCA1";
+    var msg = p<50 ? "Refor\u00e7ar urgente \u2014 abaixo de 50%" : p<65 ? "Precisa de aten\u00e7\u00e3o \u2014 abaixo de 65%" : "Pode melhorar \u2014 fa\u00e7a mais quest\u00f5es";
+    var safeD = d.replace(/"/g,"").replace(/'/g,"");
+    tips.push(
+      '<div class="tip-card">' +
+        '<div class="tip-icon">'+icon+'</div>' +
+        '<div class="tip-body">' +
+          '<div class="tip-t">'+d+' &mdash; '+p+'%</div>' +
+          '<div class="tip-d">'+msg+'. <a href="#" class="tip-ask-link" data-disc="'+safeD+'" onclick="tipAsk(this);return false;" style="color:var(--green)">Pedir dica ao Prof. IA &rarr;</a></div>' +
+        '</div>' +
+      '</div>'
+    );
+  });
+  if (!tq) {
+    tips.push('<div class="tip-card"><div class="tip-icon">\uD83D\uDE80</div><div class="tip-body"><div class="tip-t">Vamos come\u00e7ar!</div><div class="tip-d">Registre quest\u00f5es nos t\u00f3picos para ver sua curva de aprendizagem e receber dicas personalizadas.</div></div></div>');
+  }
+  var tipsEl = document.getElementById("ds-tips");
+  if (tipsEl && tips.length) {
+    tipsEl.innerHTML = '<div class="ssub" style="margin-bottom:.7rem">&#128161; Recomenda\u00e7\u00f5es</div><div class="tips-grid">'+tips.join("")+'</div>';
+  }
+
+  // Discipline bars
+  document.getElementById("ds-discs").innerHTML = DS.map(function(d) {
+    var p = byD[d].q ? byD[d].a/byD[d].q : null;
+    var pStr = p!=null ? Math.round(p*100)+"%" : "\u2014";
+    var fill = p ? Math.round(p*100) : 0;
+    var fc = !p?"":p>=0.8?"g":p>=0.6?"a":"r";
+    var col = !p?"var(--ink4)":p>=0.8?"var(--green)":p>=0.6?"var(--gold)":"var(--red)";
+    var bc = byD[d].q?(p>=0.8?"bg":p>=0.6?"ba":"br"):"bk";
+    return '<div class="drow"><div class="dn">'+d+'</div>' +
+      '<div class="dbw"><div class="db"><div class="dbf '+fc+'" style="width:'+fill+'%"></div></div></div>' +
+      '<div class="dp" style="color:'+col+'">'+pStr+'</div>' +
+      '<span class="badge '+bc+'" style="font-size:.53rem">'+(byD[d].q?byD[d].q+"Q":"\u2014")+'</span></div>';
+  }).join("");
+
+  // Topics table
+  var td = getAllEntries().filter(function(e){ return sv(e.id).q>0; })
+    .sort(function(a,b){ var ta2=sv(a.id),tb2=sv(b.id); return (ta2.q?ta2.a/ta2.q:0)-(tb2.q?tb2.a/tb2.q:0); });
+  document.getElementById("ds-topics").innerHTML = td.map(function(e) {
+    var t=sv(e.id), p=t.q?t.a/t.q:0;
+    return '<tr>' +
+      '<td style="padding:.5rem .8rem;font-size:.7rem"><span class="badge '+dBadge(e.disc)+'">'+e.disc+'</span></td>' +
+      '<td style="padding:.5rem .8rem;font-size:.78rem;max-width:160px">'+(e.topico||e.assunto)+'</td>' +
+      '<td style="padding:.5rem .8rem;text-align:center;font-family:var(--fm);font-size:.75rem">'+t.q+'</td>' +
+      '<td style="padding:.5rem .8rem;text-align:center;font-family:var(--fm);font-size:.75rem">'+t.a+'</td>' +
+      '<td style="padding:.5rem .8rem"><span class="badge '+(p>=0.8?"bg":p>=0.6?"ba":"br")+'">'+Math.round(p*100)+'%</span></td>' +
+    '</tr>';
+  }).join("");
+
+  // Charts
+  setTimeout(function() {
+    // Bar chart
+    var cDisc = document.getElementById("chart-disc");
+    if (cDisc && typeof Chart !== "undefined") {
+      if (cDisc._chart) cDisc._chart.destroy();
+      var dLabels = DS.filter(function(d){return byD[d].q>0;});
+      var dData = dLabels.map(function(d){return byD[d].q?Math.round(byD[d].a/byD[d].q*100):0;});
+      cDisc._chart = new Chart(cDisc, {
+        type:"bar",
+        data:{
+          labels:dLabels.map(function(d){return d.length>12?d.slice(0,11)+"\u2026":d;}),
+          datasets:[{label:"% Acerto",data:dData,
+            backgroundColor:dData.map(function(v){return v>=80?"rgba(45,212,191,.8)":v>=60?"rgba(255,184,77,.8)":"rgba(255,107,129,.8)";}),
+            borderRadius:6,borderSkipped:false}]
+        },
+        options:{responsive:true,plugins:{legend:{display:false}},
+          scales:{y:{beginAtZero:true,max:100,ticks:{color:"rgba(141,135,196,.75)",callback:function(v){return v+"%"}},grid:{color:"rgba(255,255,255,.05)"}},
+                 x:{ticks:{color:"rgba(141,135,196,.75)",font:{size:10}},grid:{display:false}}}}
+      });
+    }
+    // Learning curve
+    var cCurve = document.getElementById("chart-curve");
+    if (cCurve && typeof Chart !== "undefined") {
+      if (cCurve._chart) cCurve._chart.destroy();
+      var store=JSON.parse(localStorage.getItem("cldf_v2")||"{}");
+      var sessions=[];
+      Object.keys(store).forEach(function(k){
+        var ud=store[k];
+        if(ud&&ud.sessions) ud.sessions.forEach(function(s){if(s.q>0&&s.date)sessions.push({date:s.date,q:s.q,a:s.a});});
+      });
+      sessions.sort(function(a,b){return a.date.localeCompare(b.date);});
+      var byDate={};
+      sessions.forEach(function(s){if(!byDate[s.date])byDate[s.date]={q:0,a:0};byDate[s.date].q+=s.q;byDate[s.date].a+=s.a;});
+      var dates=Object.keys(byDate).sort();
+      var cumQ=0,cumA=0;
+      var pcts=dates.map(function(d){cumQ+=byDate[d].q;cumA+=byDate[d].a;return cumQ?Math.round(cumA/cumQ*100):0;});
+      if(dates.length>=2){
+        cCurve._chart=new Chart(cCurve,{type:"line",
+          data:{labels:dates.map(function(d){return fmtD(d);}),
+            datasets:[{label:"% Acerto Acumulado",data:pcts,borderColor:"rgba(139,127,255,1)",backgroundColor:"rgba(139,127,255,.12)",fill:true,tension:.4,pointBackgroundColor:"rgba(139,127,255,1)",pointRadius:4}]},
+          options:{responsive:true,plugins:{legend:{display:false}},
+            scales:{y:{beginAtZero:true,max:100,ticks:{color:"rgba(141,135,196,.75)",callback:function(v){return v+"%"}},grid:{color:"rgba(255,255,255,.05)"}},
+                   x:{ticks:{color:"rgba(141,135,196,.75)",font:{size:10},maxRotation:45},grid:{display:false}}}}
+        });
+      } else {
+        cCurve.parentElement.innerHTML='<h3>&#128200; Curva de Aprendizagem <span>sess\u00f5es ao longo do tempo</span></h3><div style="color:var(--ink4);font-size:.8rem;text-align:center;padding:3rem 1rem">Registre sess\u00f5es em mais t\u00f3picos para ver a curva</div>';
+      }
+    }
+  }, 120);
+}
+
 
 function importData(event) {
   var file = event.target.files[0];
@@ -6422,36 +6630,40 @@ function debugLS() {
 
 // ── RESET CICLO ───────────────────────────────────────────────
 
-// ── CORREÇÃO: REDEFINIR DATAS IGNORANDO MATÉRIAS PAUSADAS ─────
 function resetDates() {
   var start = document.getElementById("reset-start").value;
   var daily = parseInt(document.getElementById("reset-daily").value) || 1;
   var scope = document.getElementById("reset-scope").value;
   var order = document.getElementById("reset-order").value;
   var respectManual = document.getElementById("reset-respect-manual") ? document.getElementById("reset-respect-manual").checked : true;
-  if (!start) { toast("⚠️ Selecione uma data de início"); return; }
+  if (!start) { toast("\u26a0 Selecione uma data de in\u00edcio"); return; }
 
   try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var cicloCfg = store._cicloConfig || {};
-    var discSettings = cicloCfg.disciplinas || {};
     var all = getAllEntries();
 
+    // Filter which entries to reset
     var targets = all.filter(function(e) {
-      var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
-      if (statusDisc === "pausada") return false; // IGNORA MATÉRIAS PAUSADAS
-
       var ud = store["e" + e.id + "_r0"] || {};
+      // Preserva tópicos com data alterada manualmente (a menos que o
+      // usuário desmarque a proteção de propósito) — sem isso, Redefinir
+      // Datas sobrescrevia silenciosamente qualquer ajuste manual feito
+      // no Ciclo.
       if (respectManual && ud._manualDate) return false;
       if (scope === "pending") {
-        var st = ud.status || (e.ok === "✅" ? "ok" : "pend");
+        var st = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
         return st !== "ok";
       }
-      return true;
+      return true; // all
     });
+    var manualCount = respectManual
+      ? all.filter(function(e) { return (store["e" + e.id + "_r0"] || {})._manualDate; }).length
+      : 0;
 
-    if (!targets.length) { toast("⚠️ Nenhum tópico ativo para redefinir."); return; }
-
+    // Alternar entre disciplinas: reorganiza os tópicos em round-robin
+    // (1 de cada disciplina por vez, repetindo o ciclo) pra nunca cair
+    // vários dias seguidos na mesma disciplina — em vez de manter a
+    // ordem "crua" em que os tópicos foram salvos.
     if (order === "interleave") {
       var byDisc = {}, discOrder = [];
       targets.forEach(function(e) {
@@ -6465,31 +6677,37 @@ function resetDates() {
         keepGoing = false;
         discOrder.forEach(function(d) {
           var q = byDisc[d];
-          if (q.length) { interleaved.push(q.shift()); keepGoing = true; }
+          if (q.length) {
+            interleaved.push(q.shift());
+            keepGoing = true;
+          }
         });
       }
       targets = interleaved;
     }
 
+    // Distribute: respect daily limit
     var dayOffset = 0, countOnDay = 0;
     targets.forEach(function(e) {
       if (countOnDay >= daily) { dayOffset++; countOnDay = 0; }
       var newDate = addDays(start, dayOffset);
       countOnDay++;
 
+      // Update study date, keep q/a/sessions, clear status
       var k0 = "e" + e.id + "_r0";
       var ud0 = store[k0] || {};
       ud0.date = newDate;
-      delete ud0._manualDate;
-      if (scope === "all") ud0.status = "pend";
+      delete ud0._manualDate; // reset explícito limpa a marca de manual
+      if (scope === "all") ud0.status = "pend"; // reset status too
       store[k0] = ud0;
 
+      // Recalculate all revision dates from new study date
       (e.revs || []).forEach(function(r, idx) {
         var kr = "e" + e.id + "_r" + r.num;
         var udr = store[kr] || {};
         var interval = REV_INTERVALS[idx] !== undefined ? REV_INTERVALS[idx] : (idx + 1) * 30;
         udr.date = addDays(newDate, interval);
-        if (scope === "all") udr.status = "pend";
+        if (scope === "all") udr.status = "pend"; // reset revision status too
         store[kr] = udr;
       });
     });
@@ -6497,7 +6715,8 @@ function resetDates() {
     delete store._rolloverDate;
     lset(store);
     initAllMaps();
-    toast("✓ " + targets.length + " tópicos ativos realocados a partir de " + fmtD(start) + "!");
+    var manualMsg2 = manualCount ? " (" + manualCount + " com data manual preservada)" : "";
+    toast("\u2713 " + targets.length + " t\u00f3picos replanejados a partir de " + fmtD(start) + "!" + manualMsg2);
     reAll();
   } catch(ex) {
     alert("Erro: " + ex.message);
@@ -7167,23 +7386,8 @@ function initGerenciar() {
   initNotifSystem();
   initCicloModeUI();
   initCloudSyncUI();
-
-  // 1. Carrega o painel inteligente e os cards de disciplinas/metas
-  renderDisciplinasInteligente();
-  renderVisaoGeral();
-
   var allDiscs = getCustomDiscs();
 
-  // Populate add-entry discipline dropdown
-  var sel = document.getElementById("gf-disc");
-  if (sel) {
-    sel.innerHTML = "<option value=''>-- selecionar --</option>";
-    allDiscs.forEach(function(d) {
-      var opt = document.createElement("option");
-      opt.value = d; opt.textContent = d;
-      sel.appendChild(opt);
-    });
-  }
   // Populate add-entry discipline dropdown
   var sel = document.getElementById("gf-disc");
   sel.innerHTML = "<option value=''>-- selecionar --</option>";
