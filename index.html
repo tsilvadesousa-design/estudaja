@@ -8190,7 +8190,7 @@ function rebuildAgMap() {
   var discSettings = cicloCfg.disciplinas || {};
   
   getAllEntries().forEach(function(e) {
-    // A MÁGICA ESTÁ AQUI: Ignora totalmente as matérias pausadas na Agenda
+    // Ignora totalmente as matérias pausadas na Agenda
     var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
     if (statusDisc === "pausada") return;
 
@@ -8199,11 +8199,9 @@ function rebuildAgMap() {
       if (!agMap[ds]) agMap[ds] = [];
       agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
     }
-    // Para tópicos novos
     var u0 = ud[ukey(e.id, 0)];
     var novoDate = (u0 && u0.date) ? u0.date : e.date;
     push(novoDate, "NOVO", 0);
-    // Para revisões
     (e.revs || []).forEach(function(r) {
       var ur = ud[ukey(e.id, r.num)];
       var revDate = (ur && ur.date) ? ur.date : r.date;
@@ -9142,6 +9140,26 @@ document.addEventListener("DOMContentLoaded", function() {
     if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
   }, 400);
 });
+window.getAllEntries = function() {
+  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+  if (store._hideBase) return typeof getCustomEntries === "function" ? getCustomEntries() : [];
+  var base = (typeof ENTRIES !== "undefined" ? ENTRIES : []).map(function(e) {
+    var ud = store["e" + e.id + "_r0"] || {};
+    if (ud._deleted) return null;
+    var hasOverride = "_disc" in ud || "_topico" in ud || "_assunto" in ud || "_sub" in ud;
+    if (hasOverride) {
+      var clone = {};
+      for (var k in e) clone[k] = e[k];
+      if ("_disc"    in ud) clone.disc    = ud._disc;
+      if ("_topico"  in ud) clone.topico  = ud._topico;
+      if ("_assunto" in ud) clone.assunto = ud._assunto;
+      if ("_sub"     in ud) clone.sub     = ud._sub;
+      return clone;
+    }
+    return e;
+  }).filter(function(e) { return e !== null; });
+  return typeof getCustomEntries === "function" ? base.concat(getCustomEntries()) : base;
+};
 </script>
 
 </body>
