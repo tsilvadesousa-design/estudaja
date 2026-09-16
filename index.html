@@ -2936,12 +2936,17 @@ function getTotals(eid, rn, store) {
 }
 var REV_GAPS = [1, 6, 13, 10, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 35, 30, 30, 30, 30, 30];
 
-function adaptInterval(baseGap, pct) {
-  if (pct >= 0.9)  return Math.round(baseGap * 2.0);
-  if (pct >= 0.8)  return Math.round(baseGap * 1.5);
-  if (pct >= 0.65) return baseGap;
-  if (pct >= 0.5)  return Math.round(baseGap * 0.7);
-  return Math.max(1, Math.round(baseGap * 0.4));
+function adaptInterval(baseGap, pct, rn) {
+  // A revisão de 24 horas (R1, que é agendada quando rn === 0)
+  // DEVE ser sempre feita no dia seguinte, não importa quão bem você foi.
+  if (rn === 0) return baseGap; 
+
+  // Lógica de Metas de Acerto (Quanto maior o acerto, maior o espaçamento)
+  if (pct >= 0.90) return Math.round(baseGap * 2.5); // Domínio total: joga a revisão bem pra frente
+  if (pct >= 0.80) return Math.round(baseGap * 1.5); // Ótimo
+  if (pct >= 0.70) return baseGap;                   // Bom/Na meta: mantém o intervalo padrão
+  if (pct >= 0.50) return Math.round(baseGap * 0.7); // Razoável: encurta um pouco para revisar antes
+  return Math.max(1, Math.round(baseGap * 0.4));     // Ruim: joga a revisão pra muito perto (máx 1 dia)
 }
 
 function scheduleNextRev(eid, rn, completedDate, pct) {
@@ -2953,7 +2958,7 @@ function scheduleNextRev(eid, rn, completedDate, pct) {
   var nextUd = getU(eid, nextRn) || {};
   if (nextUd.status === "ok") return;
   var baseGap = REV_GAPS[rn] || 30;
-  var adapted = adaptInterval(baseGap, pct);
+  var adapted = adaptInterval(baseGap, pct, rn);
   nextUd.date = addDays(completedDate, adapted);
   setU(eid, nextRn, nextUd);
 }
