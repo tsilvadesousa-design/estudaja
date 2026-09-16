@@ -6324,40 +6324,53 @@ function previewReplan() {
 
 function applyReplan() {
   var start = document.getElementById("replan-start").value;
-  var daily = parseInt(document.getElementById("replan-daily").value) || 1;
-  var disc = ""; // Filtro removido do UI, aplica global
-  var order = "interleave"; // Força o modo inteligente intercalado sempre
+  var dailyLimitStr = document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1";
+  var daily = parseInt(dailyLimitStr);
+  if (isNaN(daily) || daily < 1) daily = 1;
   var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
-  if (!start) { toast("\u26a0 Selecione uma data de in\u00edcio"); return; }
+  
+  if (!start) { toast("⚠️ Selecione uma data de início do plano"); return; }
+  
   try {
-    var cicloCfg = getCicloConfig();
-    var result = buildSmartSchedule(start, daily, disc, order === "interleave", respectManual, cicloCfg);
-    var sched = result.schedule;
-    if (!result.pendingNew.length) { toast("\u26a0 Nenhum t\u00f3pico pendente pra reagendar (os demais t\u00eam data manual preservada)"); return; }
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    
+    // Chama o motor inteligente (a função que atualizamos na rodada passada)
+    var result = buildSmartSchedule(start, daily, "", true, respectManual, cicloCfg);
+    var sched = result.schedule;
+    
+    if (!result.pendingNew || !result.pendingNew.length) { 
+        toast("⚠️ Nenhum tópico novo pra reagendar (os demais são manuais ou a matéria está pausada)"); 
+        return; 
+    }
+    
+    // Aplica as novas datas
     Object.keys(sched).forEach(function(eid) {
       var s = sched[eid];
       var k0 = "e" + eid + "_r0";
       var ud0 = store[k0] || {};
       ud0.date = s.studyDate;
-      delete ud0._manualDate; // foi reagendado automaticamente agora, não é mais "manual"
+      delete ud0._manualDate;
       store[k0] = ud0;
+      
       Object.keys(s.revDates).forEach(function(rnum) {
         var kr = "e" + eid + "_r" + rnum;
         var udr = store[kr] || {};
-        if ((udr.status || "pend") !== "ok") { udr.date = s.revDates[rnum]; store[kr] = udr; }
+        if ((udr.status || "pend") !== "ok") { 
+            udr.date = s.revDates[rnum]; 
+            store[kr] = udr; 
+        }
       });
     });
-    delete store._rolloverDate;
+    
+    // Salva e recarrega tudo
     lset(store);
-    document.getElementById("replan-preview-lbl").textContent = "";
-    document.getElementById("replan-list").innerHTML = "";
     initAllMaps();
-    var manualMsg = result.manualEntries.length ? " (" + result.manualEntries.length + " com data manual preservada)" : "";
-    toast("\u2713 " + result.pendingNew.length + " t\u00f3picos replanejados a partir de " + fmtD(start) + "!" + manualMsg);
-    renderMateriasAtivas();
+    toast("✅ Ciclo replanejado com sucesso (Limite: " + daily + " por dia)!");
     reAll();
-  } catch(ex) { alert("Erro: " + ex.message); }
+  } catch(ex) {
+    alert("Erro ao replanejar: " + ex.message);
+  }
 }
 
 // ── BULK DATE ─────────────────────────────────────────────────
