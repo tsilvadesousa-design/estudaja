@@ -1659,12 +1659,14 @@ service cloud.firestore {
           <button class="btn-s" onclick="clearEdital()">Limpar</button>
         </div>
       </div>
-      <div>
-        <div class="glbl" style="margin-bottom:.5rem">Pr&#233;via &#8212; T&#243;picos Identif3);margin-bottom:.5rem">&#8987; Aguardando na Fila</div>
+<div>
+        <div class="glbl" style="margin-bottom:.5rem">Prévia — Tópicos Identificados</div>
+        <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:.9rem;margin-bottom:.8rem">
+          <div class="glbl" style="color:var(--ink3);margin-bottom:.5rem">&#8987; Aguardando na Fila</div>
           <div id="materias-aguardando-list" style="font-size:.8rem;line-height:1.9;color:var(--ink3)"></div>
         </div>
         <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:.9rem">
-          <div class="glbl" style="color:var(--green);margin-bottom:.5rem">&#9989; Em Revis&#227;o / Manuten&#231;&#227;o</div>
+          <div class="glbl" style="color:var(--green);margin-bottom:.5rem">&#9989; Em Revisão / Manutenção</div>
           <div id="materias-concluidas-list" style="font-size:.8rem;line-height:1.9"></div>
         </div>
       </div>
@@ -2182,7 +2184,18 @@ var TODAY = (function() {
   var day = String(d.getDate()).padStart(2, "0");
   return y + "-" + m + "-" + day;
 })();
+function getAllEntries() {
+  var custom = [];
+  try { custom = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e){}
+  return (typeof ENTRIES !== 'undefined' ? ENTRIES : []).concat(custom);
+}
 
+var entryMap = {};
+function buildEntryMap() {
+  entryMap = {};
+  getAllEntries().forEach(function(e) { entryMap[e.id] = e; });
+}
+buildEntryMap();
 // Disc filter names (indexed, no quote issues)
 var DISCS = [
   "",
