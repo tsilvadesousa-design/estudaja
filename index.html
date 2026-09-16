@@ -1422,7 +1422,7 @@ select option{background:var(--bg3)}
     </div>
   </details>
 
-    <!-- MÓDULO 1: CICLO DE ESTUDOS -->
+      <!-- MÓDULO 1: CICLO DE ESTUDOS -->
   <details class="modulo-inteligente" open>
     <summary>📊 1. Regras do Replano Inteligente</summary>
     <div class="modulo-content">
@@ -1440,20 +1440,20 @@ select option{background:var(--bg3)}
         <hr style="border:0;border-top:1px solid var(--bd);margin:0.5rem 0">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
           <div class="grow">
-            <div class="glbl">Nova Data de Início do Plano</div>
+            <div class="glbl">Data de Início da Distribuição</div>
             <input class="ginp" id="replan-start" type="date">
           </div>
           <div class="grow">
-            <div class="glbl">MÁX. DE TÓPICOS NOVOS POR DIA</div>
+            <div class="glbl">Máx. Tópicos Novos por dia</div>
             <input class="ginp" id="replan-daily" type="number" min="1" value="1" placeholder="Ex: 1">
           </div>
         </div>
         <div class="grow" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
           <input type="checkbox" id="replan-respect-manual" checked>
-          <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar tópicos com datas alteradas manualmente</label>
+          <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
         </div>
-        <div style="margin-top: 1rem;">
-          <button class="btn-p" style="width:100%" onclick="applyReplan()">&#10003; Aplicar Replano Inteligente</button>
+        <div style="margin-top: 1rem; display:flex; gap:0.5rem;">
+          <button class="btn-p" style="flex:1" onclick="applyReplan()">&#10003; Aplicar Replano Inteligente</button>
         </div>
       </div>
     </div>
@@ -6384,7 +6384,6 @@ function applyReplan() {
   var dailyLimitStr = document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1";
   var daily = parseInt(dailyLimitStr);
   if (isNaN(daily) || daily < 1) daily = 1;
-  
   var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
   
   if (!start) { toast("⚠ Selecione uma data de início do plano"); return; }
@@ -6406,7 +6405,7 @@ function applyReplan() {
       var k0 = "e" + eid + "_r0";
       var ud0 = store[k0] || {};
       ud0.date = s.studyDate;
-      delete ud0._manualDate; // remove a trava manual pois agora ele foi reprogramado
+      delete ud0._manualDate;
       store[k0] = ud0;
       
       Object.keys(s.revDates).forEach(function(rnum) {
@@ -8254,7 +8253,11 @@ function renderCustomList() {
 function rebuildAgMap() {
   for (var k in agMap) delete agMap[k];
   var ud = lget();
+  var cicloCfg = ud._cicloConfig || {};
+  var discSettings = cicloCfg.disciplinas || {};
   getAllEntries().forEach(function(e) {
+    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+    if (statusDisc === "pausada") return;
     function push(ds, tipo, rn) {
       if (!ds) return;
       if (!agMap[ds]) agMap[ds] = [];
