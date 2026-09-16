@@ -1661,17 +1661,12 @@ service cloud.firestore {
       </div>
 <div>
         <div class="glbl" style="margin-bottom:.5rem">Prévia — Tópicos Identificados</div>
-        <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:.9rem;margin-bottom:.8rem">
-          <div class="glbl" style="color:var(--ink3);margin-bottom:.5rem">&#8987; Aguardando na Fila</div>
-          <div id="materias-aguardando-list" style="font-size:.8rem;line-height:1.9;color:var(--ink3)"></div>
-        </div>
-        <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:.9rem">
-          <div class="glbl" style="color:var(--green);margin-bottom:.5rem">&#9989; Em Revisão / Manutenção</div>
-          <div id="materias-concluidas-list" style="font-size:.8rem;line-height:1.9"></div>
+        <div id="edital-preview" style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);min-height:200px;max-height:420px;overflow-y:auto;padding:.8rem"></div>
+        <div id="edital-actions" style="margin-top:.6rem;display:none">
+          <button class="btn-p" onclick="importEdital()">&#43; Importar Todos</button>
+          <span id="edital-count" style="font-family:monospace;font-size:.65rem;color:var(--ink3);margin-left:.6rem"></span>
         </div>
       </div>
-    </div>
-  </div>
 
   <!-- REPLANNING TÓPICO -->
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:2px solid var(--bd)">
@@ -1886,7 +1881,8 @@ service cloud.firestore {
         <input class="ginp" id="reset-confirm" type="text" placeholder="APAGAR" oninput="document.getElementById('btn-full-reset').disabled=this.value!=='APAGAR'">
       </div>
       <button class="btn-p" id="btn-full-reset" disabled style="background:var(--red);border-color:var(--red)" onclick="fullReset()">&#9888; Apagar Tudo e Reiniciar</button>
-      <p style="font-size:.7rem;color:var(--ink3)">Dica: exporte um backup antes de apagar.</p>
+<p style="font-size:.7rem;color:var(--ink3)">Dica: exporte um backup antes de apagar.</p>
+      </div>
     </div>
   </div>
 </div> <!-- FIM DA ABA GERENCIAR -->
@@ -9129,6 +9125,41 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 
 </div><!-- /#app-root -->
+<script>
+// 1. Garante que o sistema encontre todas as matérias do edital
+window.getAllEntries = function() {
+  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+  var custom = [];
+  try { custom = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e){}
+  var base = (typeof ENTRIES !== 'undefined' ? ENTRIES : []).map(function(e) {
+    var ud = store["e" + e.id + "_r0"] || {};
+    var clone = {};
+    for (var k in e) clone[k] = e[k];
+    if ("_disc" in ud) clone.disc = ud._disc;
+    if ("_topico" in ud) clone.topico = ud._topico;
+    if ("_assunto" in ud) clone.assunto = ud._assunto;
+    return clone;
+  });
+  return base.concat(custom);
+};
+
+// 2. Constrói o mapa de dados para a Agenda ler
+window.entryMap = {};
+window.rebuildEntryMap = function() {
+  window.entryMap = {};
+  window.getAllEntries().forEach(function(e) { window.entryMap[e.id] = e; });
+};
+
+// 3. Força a inicialização segura de tudo
+document.addEventListener("DOMContentLoaded", function() {
+  setTimeout(function() {
+    window.rebuildEntryMap();
+    if (typeof initAllMaps === 'function') initAllMaps();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
+  }, 400);
+});
+</script>
 
 </body>
 </html>
