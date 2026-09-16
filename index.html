@@ -6349,7 +6349,7 @@ function buildSmartSchedule(start, dailyNewLimit, discFilter, interleave, respec
   
   return { schedule: schedule, pendingNew: pendingNew, doneEntries: doneEntries, manualEntries: manualEntries };
 }
-() {
+function previewReplan() {
   var start = document.getElementById("replan-start").value;
   var daily = parseInt(document.getElementById("replan-daily").value) || 1;
   var disc = document.getElementById("replan-disc") ? document.getElementById("replan-disc").value : "";
