@@ -1422,8 +1422,8 @@ select option{background:var(--bg3)}
     </div>
   </details>
 
-  <!-- MÓDULO 1: CICLO DE ESTUDOS -->
-  <details class="modulo-inteligente">
+    <!-- MÓDULO 1: CICLO DE ESTUDOS -->
+  <details class="modulo-inteligente" open>
     <summary>📊 1. Regras do Replano Inteligente</summary>
     <div class="modulo-content">
       <div class="gform">
@@ -1440,26 +1440,26 @@ select option{background:var(--bg3)}
         <hr style="border:0;border-top:1px solid var(--bd);margin:0.5rem 0">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
           <div class="grow">
-            <div class="glbl">Data de Início da Distribuição</div>
+            <div class="glbl">Nova Data de Início do Plano</div>
             <input class="ginp" id="replan-start" type="date">
           </div>
           <div class="grow">
-            <div class="glbl">Máx. Tópicos Novos por dia</div>
-            <input class="ginp" id="replan-daily" type="number" min="1" value="1" placeholder="Ex: 2">
+            <div class="glbl">MÁX. DE TÓPICOS NOVOS POR DIA</div>
+            <input class="ginp" id="replan-daily" type="number" min="1" value="1" placeholder="Ex: 1">
           </div>
         </div>
         <div class="grow" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
           <input type="checkbox" id="replan-respect-manual" checked>
-          <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
+          <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar tópicos com datas alteradas manualmente</label>
         </div>
-        <div style="margin-top: 1rem; display:flex; gap:0.5rem;">
-          <button class="btn-p" style="flex:1" onclick="applyReplan()">&#10003; Aplicar Replano Inteligente</button>
+        <div style="margin-top: 1rem;">
+          <button class="btn-p" style="width:100%" onclick="applyReplan()">&#10003; Aplicar Replano Inteligente</button>
         </div>
       </div>
     </div>
   </details>
 
-  <!-- MÓDULO 2: DISCIPLINAS -->
+<!-- MÓDULO 2: DISCIPLINAS -->
   <details class="modulo-inteligente">
     <summary>📚 2. Disciplinas (Status, Prioridades e Metas)</summary>
     <div class="modulo-content">
@@ -1660,16 +1660,18 @@ service cloud.firestore {
         </div>
       </div>
       <div>
-        <div class="glbl" style="margin-bottom:.5rem">Pr&#233;via &#8212; T&#243;picos Identif3);margin-bottom:.5rem">&#8987; Aguardando na Fila</div>
-          <div id="materias-aguardando-list" style="font-size:.8rem;line-height:1.9;color:var(--ink3)"></div>
-        </div>
-        <div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:.9rem">
-          <div class="glbl" style="color:var(--green);margin-bottom:.5rem">&#9989; Em Revis&#227;o / Manuten&#231;&#227;o</div>
-          <div id="materias-concluidas-list" style="font-size:.8rem;line-height:1.9"></div>
+        <div class="glbl" style="margin-bottom:.5rem">Pr&#233;via &#8212; T&#243;picos Identificados</div>
+        <div id="edital-preview"
+          style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--radius-sm);
+                 min-height:200px;max-height:420px;overflow-y:auto;padding:.8rem"></div>
+        <div id="edital-actions" style="margin-top:.6rem;display:none">
+          <button class="btn-p" onclick="importEdital()">&#43; Importar Todos</button>
+          <span id="edital-count" style="font-family:monospace;font-size:.65rem;color:var(--ink3);margin-left:.6rem"></span>
         </div>
       </div>
     </div>
   </div>
+
 
   <!-- REPLANNING TÓPICO -->
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:2px solid var(--bd)">
@@ -1696,6 +1698,7 @@ service cloud.firestore {
       </div>
     </div>
   </div>
+
 <!-- BULK EDIT -->
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:2px solid var(--bd)">
     <div class="ssub">&#9998; Edi&#231;&#227;o em Lote</div>
@@ -1872,21 +1875,69 @@ service cloud.firestore {
   <!-- REINICIAR CICLO -->
   <div style="margin-top:2.5rem;padding-top:1.5rem;border-top:2px solid var(--bd)">
     <div class="ssub">&#9881; Reiniciar Ciclo de Estudos</div>
-    <div class="gform" style="max-width:600px;">
-      <div class="glbl" style="font-size:.7rem;font-weight:700;color:var(--red)">&#9888; Apagar Todos os Dados</div>
-      <p style="font-size:.77rem;color:var(--ink3);line-height:1.5">
-        Remove <strong>todos</strong> os dados salvos: status, datas, questões, acertos, observações,
-        <strong>e também as disciplinas e tópicos</strong> (originais e importados). O ciclo fica vazio,
-        pronto para importar um novo edital. <strong>Irrevers&#237;vel.</strong>
-      </p>
-      <div class="grow">
-        <div class="glbl">Digite <strong>APAGAR</strong> para confirmar</div>
-        <input class="ginp" id="reset-confirm" type="text" placeholder="APAGAR" oninput="document.getElementById('btn-full-reset').disabled=this.value!=='APAGAR'">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:.8rem">
+
+      <!-- Reset dates only -->
+      <div class="gform">
+        <div class="glbl" style="font-size:.7rem;font-weight:700;color:var(--ink)">&#128197; Redefinir Datas (mant&#233;m desempenho)</div>
+        <p style="font-size:.77rem;color:var(--ink3);line-height:1.5">
+          Recalcula todas as datas de in&#237;cio e revis&#245;es a partir de uma nova data.
+          Mant&#233;m questões, acertos e histórico de sessões. Limpa apenas status e datas.
+          Por padr&#227;o, alterna as disciplinas entre os dias (evita v&#225;rios dias
+          seguidos da mesma mat&#233;ria).
+        </p>
+        <div class="grow">
+          <div class="glbl">Nova data de in&#237;cio</div>
+          <input class="ginp" id="reset-start" type="date">
+        </div>
+        <div class="grow">
+          <div class="glbl">T&#243;picos por dia</div>
+          <select class="ginp" id="reset-daily">
+            <option value="1">1 por dia</option>
+            <option value="2">2 por dia</option>
+            <option value="3">3 por dia</option>
+          </select>
+        </div>
+        <div class="grow">
+          <div class="glbl">Ordem dos t&#243;picos</div>
+          <select class="ginp" id="reset-order">
+            <option value="interleave">&#128256; Alternar entre disciplinas</option>
+            <option value="keep">Manter ordem atual</option>
+          </select>
+        </div>
+        <div class="grow">
+          <div class="glbl">Aplicar em</div>
+          <select class="ginp" id="reset-scope">
+            <option value="all">Todos os t&#243;picos (incluindo feitos)</option>
+            <option value="pending">Apenas pendentes</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:var(--ink2);cursor:pointer">
+          <input type="checkbox" id="reset-respect-manual" checked style="width:15px;height:15px;cursor:pointer">
+          &#128274; Preservar datas alteradas manualmente
+        </label>
+        <button class="btn-p" style="background:var(--gold);border-color:var(--gold)" onclick="resetDates()">&#128197; Redefinir Datas</button>
       </div>
-      <button class="btn-p" id="btn-full-reset" disabled style="background:var(--red);border-color:var(--red)" onclick="fullReset()">&#9888; Apagar Tudo e Reiniciar</button>
-      <p style="font-size:.7rem;color:var(--ink3)">Dica: exporte um backup antes de apagar.</p>
+
+      <!-- Full reset -->
+      <div class="gform">
+        <div class="glbl" style="font-size:.7rem;font-weight:700;color:var(--red)">&#9888; Apagar Todos os Dados</div>
+        <p style="font-size:.77rem;color:var(--ink3);line-height:1.5">
+          Remove <strong>todos</strong> os dados salvos: status, datas, questões, acertos, observações,
+          <strong>e também as disciplinas e tópicos</strong> (originais e importados). O ciclo fica vazio,
+          pronto para importar um novo edital. <strong>Irrevers&#237;vel.</strong>
+        </p>
+        <div class="grow">
+          <div class="glbl">Digite <strong>APAGAR</strong> para confirmar</div>
+          <input class="ginp" id="reset-confirm" type="text" placeholder="APAGAR" oninput="document.getElementById('btn-full-reset').disabled=this.value!=='APAGAR'">
+        </div>
+        <button class="btn-p" id="btn-full-reset" disabled style="background:var(--red);border-color:var(--red)" onclick="fullReset()">&#9888; Apagar Tudo e Reiniciar</button>
+        <p style="font-size:.7rem;color:var(--ink3)">Dica: exporte um backup antes de apagar.</p>
+      </div>
+
     </div>
   </div>
+</div>
 </div> <!-- FIM DA ABA GERENCIAR -->
 
 
@@ -2745,6 +2796,51 @@ function dBadge(d) {
 // ── AGENDA INDEX (DINÂMICO E CORRIGIDO) ────────────────────────
 var agMap = {};
 
+function initAllMaps() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
+
+    agMap = {}; // Limpa o mapa antigo para reconstruir com as datas novas
+
+    allEntries.forEach(function(e) {
+        // Ignora totalmente as matérias pausadas na Agenda
+        var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+        if (statusDisc === "pausada") return;
+
+        function push(ds, tipo, rn) {
+            if (!ds) return;
+            if (!agMap[ds]) agMap[ds] = [];
+            agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+        }
+
+        // Usa a data do LocalStorage (replanejada) em vez da data fixa do JSON
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        var studyDate = ud0.date || e.date;
+        push(studyDate, "NOVO", 0);
+
+        (e.revs || []).forEach(function(r) {
+            var udr = store["e" + e.id + "_r" + r.num] || {};
+            var revDate = udr.date || r.date;
+            push(revDate, "REV", r.num);
+        });
+    });
+}
+
+// Recarrega todos os dados visuais
+function reAll() {
+    initAllMaps();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    if (typeof renderCiclo === 'function') renderCiclo();
+    if (typeof renderDesemp === 'function') renderDesemp();
+    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+}
+
+// Inicializa a agenda logo no carregamento com as datas atuais e atualizadas
+initAllMaps();
+
+
 // ── CARD HTML ─────────────────────────────────────────────────
 function makeCard(item, store) {
   var e = entryMap[item.eid] || ENTRIES[item.eid];
@@ -2840,12 +2936,17 @@ function getTotals(eid, rn, store) {
 }
 var REV_GAPS = [1, 6, 13, 10, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 35, 30, 30, 30, 30, 30];
 
-function adaptInterval(baseGap, pct) {
-  if (pct >= 0.9)  return Math.round(baseGap * 2.0);
-  if (pct >= 0.8)  return Math.round(baseGap * 1.5);
-  if (pct >= 0.65) return baseGap;
-  if (pct >= 0.5)  return Math.round(baseGap * 0.7);
-  return Math.max(1, Math.round(baseGap * 0.4));
+function adaptInterval(baseGap, pct, rn) {
+  // A revisão de 24 horas (R1, que é agendada quando rn === 0)
+  // DEVE ser sempre feita no dia seguinte, não importa quão bem você foi.
+  if (rn === 0) return baseGap; 
+
+  // Lógica de Metas de Acerto (Quanto maior o acerto, maior o espaçamento)
+  if (pct >= 0.90) return Math.round(baseGap * 2.5); // Domínio total: joga a revisão bem pra frente
+  if (pct >= 0.80) return Math.round(baseGap * 1.5); // Ótimo
+  if (pct >= 0.70) return baseGap;                   // Bom/Na meta: mantém o intervalo padrão
+  if (pct >= 0.50) return Math.round(baseGap * 0.7); // Razoável: encurta um pouco para revisar antes
+  return Math.max(1, Math.round(baseGap * 0.4));     // Ruim: joga a revisão pra muito perto (máx 1 dia)
 }
 
 function scheduleNextRev(eid, rn, completedDate, pct) {
@@ -2857,7 +2958,7 @@ function scheduleNextRev(eid, rn, completedDate, pct) {
   var nextUd = getU(eid, nextRn) || {};
   if (nextUd.status === "ok") return;
   var baseGap = REV_GAPS[rn] || 30;
-  var adapted = adaptInterval(baseGap, pct);
+  var adapted = adaptInterval(baseGap, pct, rn);
   nextUd.date = addDays(completedDate, adapted);
   setU(eid, nextRn, nextUd);
 }
@@ -6125,41 +6226,36 @@ function buildSmartSchedule(start, dailyNewLimit, discFilter, interleave, respec
   var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
   var allEntries = getAllEntries();
   
-  // Extrai as configurações individuais das matérias (onde ficarão os status e prioridades futuramente)
+  // Extrai configurações do Gerenciador Inteligente
   var discSettings = (cicloConfig && cicloConfig.disciplinas) ? cicloConfig.disciplinas : {};
   
   var pendingNew = [], doneEntries = [], manualEntries = [], untouchedDates = [];
   
-  // 1. FILTRAGEM INICIAL E VERIFICAÇÃO DE STATUS
+  // 1. FILTRAGEM ABSOLUTA
   allEntries.forEach(function(e) {
     var dName = e.disc || "";
     var cfg = discSettings[dName] || {};
     var dStatus = cfg.status || "ativa";
 
-    // REGRA 15: Matérias pausadas/ocultas são sumariamente ignoradas. 
-    // Não ocupam vaga e não influenciam as outras.
-    if (dStatus !== "ativa") {
-        return; 
-    }
+    // REGRA DE OURO: Matérias pausadas/ocultas SÃO EXCLUÍDAS DO CÁLCULO
+    if (dStatus !== "ativa") return;
 
-    if (discFilter && e.disc !== discFilter) {
-      var udX = store["e" + e.id + "_r0"] || {};
-      var stX = udX.status || (e.ok === "\u2705" ? "ok" : "pend");
-      var dateX = udX.date || e.date;
-      if (stX !== "ok" && dateX) untouchedDates.push(dateX);
-      return;
-    }
-    
     var ud = store["e" + e.id + "_r0"] || {};
-    var status = ud.status || (e.ok === "\u2705" ? "ok" : "pend");
+    var status = ud.status || (e.ok === "✅" ? "ok" : "pend");
+    
+    // Tópico já feito
     if (status === "ok") { doneEntries.push(e); return; }
     
-    if (respectManual && ud._manualDate) { manualEntries.push(e); return; }
+    // Tópico com data forçada manualmente pelo usuário
+    if (respectManual && ud._manualDate) { 
+        manualEntries.push(e); 
+        return; 
+    }
     
     pendingNew.push(e);
   });
 
-  // 2. MOTOR INTELIGENTE DE DISTRIBUIÇÃO (SCORING)
+  // 2. DISTRIBUIÇÃO INTELIGENTE (SCORING)
   if (pendingNew.length > 0) {
     var byDisc = {};
     pendingNew.forEach(function(e) {
@@ -6168,64 +6264,53 @@ function buildSmartSchedule(start, dailyNewLimit, discFilter, interleave, respec
       byDisc[d].push(e);
     });
 
-    // Monta o "painel" de matérias ativas para a rodada
+    // Mapeia disciplinas ativas e calcula pontuação
     var activeDiscs = Object.keys(byDisc).map(function(d) {
       var cfg = discSettings[d] || {};
       return {
         nome: d,
-        prioridade: cfg.prioridade || 3,
-        frequenciaDesejada: cfg.frequenciaDesejada || 1,
-        prazoDiasRestantes: cfg.prazoDiasRestantes || 30, // Padrão
+        prioridade: Number(cfg.prioridade || 3),
+        prazoDiasRestantes: Number(cfg.prazoDiasRestantes || 30),
         topicosPendentes: byDisc[d].length,
         queue: byDisc[d]
       };
     });
 
     var interleaved = [];
-    var numSimult = (cicloConfig && cicloConfig.numSimult) ? parseInt(cicloConfig.numSimult) : activeDiscs.length;
+    var numSimult = Number(cicloConfig.numSimult) || activeDiscs.length;
+    if (numSimult <= 0) numSimult = 4;
 
-    // Loop de distribuição proporcional: Quem tem mais urgência/peso puxa mais blocos
     while (activeDiscs.length > 0) {
-      // Recalcula o score a cada rodada (a urgência cai conforme os tópicos são agendados)
       activeDiscs.forEach(function(d) {
-        if (typeof calcularScoreDisciplina === 'function') {
-          d.score = calcularScoreDisciplina(d);
-        } else {
-          // Fallback de segurança se a função não estiver declarada
-          var urgencia = (d.topicosPendentes / (d.prazoDiasRestantes > 0 ? d.prazoDiasRestantes : 1));
-          d.score = (Number(d.prioridade) * 10) + (urgencia * 40) + (Number(d.frequenciaDesejada) * 5);
-        }
+        var urgencia = d.topicosPendentes / (d.prazoDiasRestantes > 0 ? d.prazoDiasRestantes : 1);
+        d.score = (d.prioridade * 20) + (urgencia * 80);
       });
 
-      // Ordena das mais prioritárias/urgentes para as menos
+      // Ordena por peso + urgência
       activeDiscs.sort(function(a, b) { return b.score - a.score; });
 
-      // Seleciona o limite de matérias simultâneas para esta rodada
       var materiasNestaRodada = activeDiscs.slice(0, numSimult);
-
       materiasNestaRodada.forEach(function(d) {
         if (d.queue.length > 0) {
           interleaved.push(d.queue.shift());
-          d.topicosPendentes--; // Reduz a urgência para a próxima rodada
+          d.topicosPendentes--;
         }
       });
 
-      // Remove matérias que já tiveram todos os tópicos agendados
       activeDiscs = activeDiscs.filter(function(d) { return d.queue.length > 0; });
     }
-    pendingNew = interleaved; // Substitui pela nova fila inteligente
+    pendingNew = interleaved; 
   }
 
-  // 3. AGENDAMENTO EFETIVO NO CALENDÁRIO (Mantido original para proteger seus dados)
+  // 3. AGENDAMENTO NO CALENDÁRIO COM LIMITE DIÁRIO ESTILIZADO
   var cal = {};
   function getDay(ds) { if (!cal[ds]) cal[ds] = {newCount:0, revCount:0}; return cal[ds]; }
   
+  // Ocupa os dias que já possuem tópicos manuais
   manualEntries.forEach(function(e) {
     var ud = store["e" + e.id + "_r0"] || {};
     if (ud.date) getDay(ud.date).newCount++;
   });
-  
-  untouchedDates.forEach(function(d) { getDay(d).newCount++; });
   
   function nextFreeDay(fromDate, maxNew) {
     var d = fromDate;
@@ -6238,13 +6323,20 @@ function buildSmartSchedule(start, dailyNewLimit, discFilter, interleave, respec
   
   var schedule = {};
   pendingNew.forEach(function(e) {
+    // BLINDAGEM: Localiza o próximo dia vago respeitando o limite diário
     var cursor = nextFreeDay(start, dailyNewLimit);
+    
+    // Atualiza o start para este cursor, assim a busca do próximo item começa daqui
     start = cursor; 
+    
+    // Ocupa 1 vaga do dia
     getDay(cursor).newCount++;
+    
     var revDates = {};
     (e.revs || []).forEach(function(r, idx) {
       var interval = REV_INTERVALS[idx] !== undefined ? REV_INTERVALS[idx] : (idx + 1) * 30;
       var d = addDays(cursor, interval);
+      // Espalha revisões pra não acumular tudo num dia só
       for (var j = 0; j < 30; j++) {
         if (getDay(d).revCount < dailyNewLimit + 3) break;
         d = addDays(d, 1);
@@ -6257,8 +6349,7 @@ function buildSmartSchedule(start, dailyNewLimit, discFilter, interleave, respec
   
   return { schedule: schedule, pendingNew: pendingNew, doneEntries: doneEntries, manualEntries: manualEntries };
 }
-
-function previewReplan() {
+() {
   var start = document.getElementById("replan-start").value;
   var daily = parseInt(document.getElementById("replan-daily").value) || 1;
   var disc = document.getElementById("replan-disc") ? document.getElementById("replan-disc").value : "";
@@ -6290,40 +6381,51 @@ function previewReplan() {
 
 function applyReplan() {
   var start = document.getElementById("replan-start").value;
-  var daily = parseInt(document.getElementById("replan-daily").value) || 1;
-  var disc = ""; // Filtro removido do UI, aplica global
-  var order = "interleave"; // Força o modo inteligente intercalado sempre
+  var dailyLimitStr = document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1";
+  var daily = parseInt(dailyLimitStr);
+  if (isNaN(daily) || daily < 1) daily = 1;
+  
   var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
-  if (!start) { toast("\u26a0 Selecione uma data de in\u00edcio"); return; }
+  
+  if (!start) { toast("⚠ Selecione uma data de início do plano"); return; }
+  
   try {
-    var cicloCfg = getCicloConfig();
-    var result = buildSmartSchedule(start, daily, disc, order === "interleave", respectManual, cicloCfg);
-    var sched = result.schedule;
-    if (!result.pendingNew.length) { toast("\u26a0 Nenhum t\u00f3pico pendente pra reagendar (os demais t\u00eam data manual preservada)"); return; }
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    
+    var result = buildSmartSchedule(start, daily, "", true, respectManual, cicloCfg);
+    var sched = result.schedule;
+    
+    if (!result.pendingNew.length) { 
+        toast("⚠ Nenhum tópico novo pra reagendar (os demais são manuais ou a matéria está pausada)"); 
+        return; 
+    }
+    
     Object.keys(sched).forEach(function(eid) {
       var s = sched[eid];
       var k0 = "e" + eid + "_r0";
       var ud0 = store[k0] || {};
       ud0.date = s.studyDate;
-      delete ud0._manualDate; // foi reagendado automaticamente agora, não é mais "manual"
+      delete ud0._manualDate; // remove a trava manual pois agora ele foi reprogramado
       store[k0] = ud0;
+      
       Object.keys(s.revDates).forEach(function(rnum) {
         var kr = "e" + eid + "_r" + rnum;
         var udr = store[kr] || {};
-        if ((udr.status || "pend") !== "ok") { udr.date = s.revDates[rnum]; store[kr] = udr; }
+        if ((udr.status || "pend") !== "ok") { 
+            udr.date = s.revDates[rnum]; 
+            store[kr] = udr; 
+        }
       });
     });
-    delete store._rolloverDate;
+    
     lset(store);
-    document.getElementById("replan-preview-lbl").textContent = "";
-    document.getElementById("replan-list").innerHTML = "";
     initAllMaps();
-    var manualMsg = result.manualEntries.length ? " (" + result.manualEntries.length + " com data manual preservada)" : "";
-    toast("\u2713 " + result.pendingNew.length + " t\u00f3picos replanejados a partir de " + fmtD(start) + "!" + manualMsg);
-    renderMateriasAtivas();
+    toast("✓ Ciclo replanejado com sucesso (Limite: " + daily + " por dia)!");
     reAll();
-  } catch(ex) { alert("Erro: " + ex.message); }
+  } catch(ex) {
+    alert("Erro ao replanejar: " + ex.message);
+  }
 }
 
 // ── BULK DATE ─────────────────────────────────────────────────
@@ -8152,14 +8254,7 @@ function renderCustomList() {
 function rebuildAgMap() {
   for (var k in agMap) delete agMap[k];
   var ud = lget();
-  var cicloCfg = ud._cicloConfig || {};
-  var discSettings = cicloCfg.disciplinas || {};
-  
   getAllEntries().forEach(function(e) {
-    // Ignora totalmente as matérias pausadas na Agenda
-    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
-    if (statusDisc === "pausada") return;
-
     function push(ds, tipo, rn) {
       if (!ds) return;
       if (!agMap[ds]) agMap[ds] = [];
@@ -8588,7 +8683,7 @@ function migrateDashToSubV2() {
   }
 }
 
-document.getElementById("nav-dt").textContent = fmtD(TODAY) + " \u00b7 " + fmtWd(TODAY);
+var _navDt = document.getElementById("nav-dt"); if (_navDt) _navDt.textContent = fmtD(TODAY) + " \u00b7 " + fmtWd(TODAY);
 migrateDashToSub();
 migrateDashToSubV2();
 cleanupAccumulatedRollovers();
