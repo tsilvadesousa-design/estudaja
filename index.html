@@ -9189,6 +9189,39 @@ window.getAllEntries = function() {
   }).filter(function(e) { return e !== null; });
   return typeof getCustomEntries === "function" ? base.concat(getCustomEntries()) : base;
 };
+
+// =========================================================================
+// FORÇA O CARREGAMENTO DA VISÃO GERAL E PAINÉIS DE INTELIGÊNCIA
+// =========================================================================
+document.addEventListener("DOMContentLoaded", function() {
+    
+    function safeRenderPanels() {
+        try {
+            if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
+            if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+        } catch(e) {
+            console.error("Erro ao renderizar painéis:", e);
+            var container = document.getElementById("painel-visao-geral");
+            if (container) {
+                container.innerHTML = "<span style='color:var(--red)'>Erro no painel: " + e.message + "</span>";
+            }
+        }
+    }
+
+    // 1. Garante que os painéis sejam desenhados alguns milissegundos após a página abrir
+    setTimeout(safeRenderPanels, 500);
+
+    // 2. Garante que eles sejam atualizados SEMPRE que você clicar na aba "Gerenciar"
+    var _oldShowPage = window.showPage;
+    if (typeof _oldShowPage === 'function') {
+        window.showPage = function(id, btn) {
+            _oldShowPage(id, btn); // Faz o comportamento normal de trocar de aba
+            if (id === "gerenciar") {
+                safeRenderPanels(); // Desenha as disciplinas e a Visão Geral
+            }
+        };
+    }
+});
 </script>
 
 </body>
