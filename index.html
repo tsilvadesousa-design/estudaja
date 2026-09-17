@@ -10032,6 +10032,150 @@ setTimeout(function() {
     };
 })();
 </script>
+<!-- Biblioteca Oficial do Google para Login moderno -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// =========================================================================
+// INTEGRAÇÃO DEFINITIVA: GOOGLE DRIVE (Espaço Infinito)
+// =========================================================================
+(function() {
+    // ⚠️ COLE SEU ID DO CLIENTE ABAIXO MANTENDO AS ASPAS:
+    const MEU_CLIENT_ID = "238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com"; 
+    
+    let driveToken = null;
+    let driveFileId = null;
+
+    // 1. Botão de Autenticação com o Google
+    window.conectarGoogleDrive = function() {
+        const client = google.accounts.oauth2.initTokenClient({
+            client_id: MEU_CLIENT_ID,
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            callback: (response) => {
+                if (response.error) {
+                    alert("Erro ao conectar com o Google.");
+                    return;
+                }
+                driveToken = response.access_token;
+                alert("✅ Google Drive Conectado! Sincronização ativada.");
+                
+                // Muda a interface para mostrar que está logado
+                var status = document.getElementById("fb-sync-status");
+                if (status) status.innerHTML = "☁️ Drive Conectado";
+            }
+        });
+        client.requestAccessToken();
+    };
+
+    // 2. O Motor de Envio para o Drive (Suporta arquivos gigantes)
+    async function salvarNoDrive(dadosCompletos) {
+        if (!driveToken) return; // Se não conectou, só salva no celular silenciosamente
+
+        try {
+            var status = document.getElementById("fb-sync-status");
+            if (status) status.innerHTML = "⏳ Salvando no Drive...";
+
+            let conteudoArquivo = JSON.stringify(dadosCompletos);
+            let metadata = { name: 'EstudaJa_Backup_Oficial.json', mimeType: 'application/json' };
+            
+            // Procura se o arquivo já existe para não criar duplicatas
+            if (!driveFileId) {
+                let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
+                let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+                    headers: { Authorization: 'Bearer ' + driveToken }
+                });
+                let resData = await resBusca.json();
+                if (resData.files && resData.files.length > 0) {
+                    driveFileId = resData.files[0].id;
+                }
+            }
+
+            let form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', new Blob([conteudoArquivo], { type: 'application/json' }));
+
+            let url = driveFileId
+                ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
+                : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+            
+            let method = driveFileId ? 'PATCH' : 'POST';
+
+            let resUpload = await fetch(url, {
+                method: method,
+                headers: { Authorization: 'Bearer ' + driveToken },
+                body: form
+            });
+
+            if (resUpload.ok) {
+                let dadosFinais = await resUpload.json();
+                driveFileId = dadosFinais.id;
+                if (status) status.innerHTML = "✅ Salvo no Drive";
+            }
+        } catch (erro) {
+            console.error("Erro no Drive:", erro);
+            var status = document.getElementById("fb-sync-status");
+            if (status) status.innerHTML = "❌ Erro ao salvar";
+        }
+    }
+
+    // 3. Substitui o botão de Importar antigo pelo novo que manda pro Drive
+    window.importData = function(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var raw = JSON.parse(e.target.result);
+            var importedData = raw.userData ? raw.userData : raw;
+            
+            // Salva na memória rápida do aparelho
+            localStorage.setItem("cldf_v2", JSON.stringify(importedData));
+            if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
+            
+            // Empurra o arquivo pesado pro Drive
+            var payload = {
+                main: importedData,
+                custom: raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
+            };
+            
+            if (driveToken) {
+                salvarNoDrive(payload).then(() => {
+                    alert("✅ Restaurado e salvo no Google Drive!");
+                    location.reload();
+                });
+            } else {
+                alert("✅ Backup restaurado no celular! (Conecte o Drive para enviar à nuvem).");
+                location.reload();
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // 4. Substitui a função de marcar checkmarks (salva local + nuvem)
+    window.lset = function(d) {
+        try {
+            d._updatedAt = Date.now();
+            localStorage.setItem("cldf_v2", JSON.stringify(d));
+            
+            if (driveToken) {
+                var payload = {
+                    main: d,
+                    custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                    methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
+                };
+                salvarNoDrive(payload);
+            }
+            if (typeof markSaved === "function") markSaved();
+            return true;
+        } catch (ex) { return false; }
+    };
+})();
+</script>
+
+<!-- Botão flutuante simples para você conseguir conectar o Drive -->
+<button onclick="conectarGoogleDrive()" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; padding: 15px; background: #34A853; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+  📁 Conectar Google Drive
+</button>
   
 </body>
 </html>
