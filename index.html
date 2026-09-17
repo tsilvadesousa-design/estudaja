@@ -10037,7 +10037,7 @@ setTimeout(function() {
 
 <script>
 // =========================================================================
-// INTEGRAÇÃO DEFINITIVA: GOOGLE DRIVE (Espaço Infinito)
+// INTEGRAÇÃO DEFINITIVA: GOOGLE DRIVE (Sincronização Completa)
 // =========================================================================
 (function() {
     // ⚠️ COLE SEU ID DO CLIENTE ABAIXO MANTENDO AS ASPAS:
@@ -10046,7 +10046,7 @@ setTimeout(function() {
     let driveToken = null;
     let driveFileId = null;
 
-    // 1. Botão de Autenticação com o Google
+    // 1. Botão de Autenticação
     window.conectarGoogleDrive = function() {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: MEU_CLIENT_ID,
@@ -10058,8 +10058,6 @@ setTimeout(function() {
                 }
                 driveToken = response.access_token;
                 alert("✅ Google Drive Conectado! Sincronização ativada.");
-                
-                // Muda a interface para mostrar que está logado
                 var status = document.getElementById("fb-sync-status");
                 if (status) status.innerHTML = "☁️ Drive Conectado";
             }
@@ -10067,10 +10065,9 @@ setTimeout(function() {
         client.requestAccessToken();
     };
 
-    // 2. O Motor de Envio para o Drive (Suporta arquivos gigantes)
+    // 2. Motor de Envio
     async function salvarNoDrive(dadosCompletos) {
-        if (!driveToken) return; // Se não conectou, só salva no celular silenciosamente
-
+        if (!driveToken) return; 
         try {
             var status = document.getElementById("fb-sync-status");
             if (status) status.innerHTML = "⏳ Salvando no Drive...";
@@ -10078,7 +10075,6 @@ setTimeout(function() {
             let conteudoArquivo = JSON.stringify(dadosCompletos);
             let metadata = { name: 'EstudaJa_Backup_Oficial.json', mimeType: 'application/json' };
             
-            // Procura se o arquivo já existe para não criar duplicatas
             if (!driveFileId) {
                 let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
                 let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
@@ -10118,7 +10114,35 @@ setTimeout(function() {
         }
     }
 
-    // 3. Substitui o botão de Importar antigo pelo novo que manda pro Drive
+    // 3. Puxar da Nuvem (Agora do lado de dentro da cerca!)
+    window.baixarDoDrive = async function() {
+        if (!driveToken) { alert("⚠️ Por favor, clique em 'Conectar Drive' primeiro!"); return; }
+        try {
+            var status = document.getElementById("fb-sync-status");
+            if (status) status.innerHTML = "⏳ Puxando dados...";
+            
+            let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
+            let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + driveToken } });
+            let resData = await resBusca.json();
+            
+            if (resData.files && resData.files.length > 0) {
+                let fileId = resData.files[0].id;
+                let resDownload = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + driveToken } });
+                let dadosNuvem = await resDownload.json();
+                
+                localStorage.setItem("cldf_v2", JSON.stringify(dadosNuvem.main));
+                if (dadosNuvem.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(dadosNuvem.custom));
+                if (dadosNuvem.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(dadosNuvem.methods));
+                
+                alert("✅ Sincronizado! Seus estudos estão atualizados nesta tela.");
+                location.reload();
+            } else {
+                alert("❌ Nenhum backup encontrado no seu Drive ainda.");
+            }
+        } catch(e) { alert("Erro ao baixar: " + e.message); }
+    };
+
+    // 4. Importar manual (opcional)
     window.importData = function(event) {
         var file = event.target.files[0];
         if (!file) return;
@@ -10127,11 +10151,9 @@ setTimeout(function() {
             var raw = JSON.parse(e.target.result);
             var importedData = raw.userData ? raw.userData : raw;
             
-            // Salva na memória rápida do aparelho
             localStorage.setItem("cldf_v2", JSON.stringify(importedData));
             if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
             
-            // Empurra o arquivo pesado pro Drive
             var payload = {
                 main: importedData,
                 custom: raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
@@ -10151,7 +10173,7 @@ setTimeout(function() {
         reader.readAsText(file);
     };
 
-    // 4. Substitui a função de marcar checkmarks (salva local + nuvem)
+    // 5. Salva na nuvem ao marcar checkboxes
     window.lset = function(d) {
         try {
             d._updatedAt = Date.now();
@@ -10174,49 +10196,13 @@ setTimeout(function() {
 
 <!-- Botões Flutuantes do Google Drive -->
 <div style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; gap: 10px;">
-  
   <button onclick="baixarDoDrive()" style="padding: 15px; background: #4285F4; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
     ⬇️ Puxar da Nuvem
   </button>
-
   <button onclick="conectarGoogleDrive()" style="padding: 15px; background: #34A853; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
     📁 Conectar Drive
   </button>
-
 </div>
-
-<script>
-// Função para Puxar os dados do Drive quando trocar de aparelho
-window.baixarDoDrive = async function() {
-    if (!driveToken) { alert("⚠️ Por favor, clique em 'Conectar Drive' primeiro!"); return; }
-    try {
-        var status = document.getElementById("fb-sync-status");
-        if (status) status.innerHTML = "⏳ Puxando dados...";
-        
-        // Busca o arquivo invisível que salvamos no seu Drive
-        let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
-        let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + driveToken } });
-        let resData = await resBusca.json();
-        
-        if (resData.files && resData.files.length > 0) {
-            let fileId = resData.files[0].id;
-            // Faz o download
-            let resDownload = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + driveToken } });
-            let dadosNuvem = await resDownload.json();
-            
-            // Grava no aparelho atual
-            localStorage.setItem("cldf_v2", JSON.stringify(dadosNuvem.main));
-            if (dadosNuvem.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(dadosNuvem.custom));
-            if (dadosNuvem.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(dadosNuvem.methods));
-            
-            alert("✅ Sincronizado! Seus estudos estão atualizados nesta tela.");
-            location.reload();
-        } else {
-            alert("❌ Nenhum backup encontrado no seu Drive ainda.");
-        }
-    } catch(e) { alert("Erro ao baixar: " + e.message); }
-};
-</script>
   
 </body>
 </html>
