@@ -9795,5 +9795,94 @@ setTimeout(function() {
 }, 1000);
 </script>
 
+<script>
+// =========================================================================
+// UPGRADE: ARQUITETURA CLOUD-FIRST (Sincronização em Tempo Real)
+// =========================================================================
+
+(function() {
+    // Evita que o aparelho fique recarregando a tela com as próprias alterações
+    window._ignorarEco = false;
+
+    // 1. Intercepta o botão de Salvar para empurrar DIRETO para a nuvem
+    window.lset = function(d) {
+        try {
+            d._updatedAt = Date.now();
+            localStorage.setItem("cldf_v2", JSON.stringify(d)); // Cache rápido para a tela não piscar
+            
+            var ref = typeof fbUserDocRef === 'function' ? fbUserDocRef() : null;
+            if (ref) {
+                window._ignorarEco = true; 
+                var payload = {
+                    main: d,
+                    custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                    methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+                    _updatedAt: Date.now()
+                };
+                // Atualiza a nuvem imediatamente
+                ref.set(payload, {merge: true}).then(function() {
+                    if (typeof markSaved === "function") markSaved();
+                    var status = document.getElementById("fb-sync-status");
+                    if(status) status.textContent = "☁️ Nuvem Atualizada";
+                });
+            }
+            return true;
+        } catch (ex) { 
+            console.error("Erro ao salvar:", ex);
+            return false; 
+        }
+    };
+
+    // 2. O "Ouvido Biônico" - Escuta alterações de outros aparelhos em tempo real
+    window.iniciarEscutaDaNuvem = function() {
+        var ref = typeof fbUserDocRef === 'function' ? fbUserDocRef() : null;
+        if (!ref) return;
+
+        console.log("📡 Escuta em tempo real ativada com sucesso!");
+        
+        // onSnapshot é o comando oficial do Google que fica "vigiando" a nuvem
+        ref.onSnapshot(function(doc) {
+            if (doc.exists) {
+                if (window._ignorarEco) {
+                    window._ignorarEco = false; 
+                    return; // Ignora se a alteração saiu deste próprio aparelho agora
+                }
+                
+                var data = doc.data();
+                var dataRemota = data._updatedAt || 0;
+                var local = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+                var dataLocal = local._updatedAt || 0;
+
+                // Se a nuvem tiver uma informação mais nova (celular alterou algo, o PC precisa puxar)
+                if (dataRemota > dataLocal) {
+                    console.log("🔄 Baixando dados sincronizados...");
+                    
+                    if (data.main) localStorage.setItem("cldf_v2", JSON.stringify(data.main));
+                    if (data.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(data.custom));
+                    if (data.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(data.methods));
+                    
+                    // Recarrega a tela instantaneamente com os dados do outro aparelho
+                    if (typeof window.rebuildEntryMap === 'function') window.rebuildEntryMap();
+                    if (typeof window.rebuildAgMap === 'function') window.rebuildAgMap();
+                    if (typeof window.renderAgenda === 'function') window.renderAgenda();
+                    if (typeof window.renderVisaoGeral === 'function') window.renderVisaoGeral();
+                    
+                    // Mostra um aviso rápido para você saber que sincronizou
+                    if (typeof toast === 'function') toast("🔄 Sincronizado de outro dispositivo!");
+                }
+            }
+        });
+    };
+
+    // 3. Tenta plugar o ouvinte assim que você fizer o Login no Firebase
+    var tentarConexao = setInterval(function() {
+        if (typeof fbUserDocRef === 'function' && fbUserDocRef()) {
+            window.iniciarEscutaDaNuvem();
+            clearInterval(tentarConexao); // Para de tentar conectar após o sucesso
+        }
+    }, 2000); 
+})();
+</script>
+
 </body>
 </html>
