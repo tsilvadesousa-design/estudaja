@@ -9751,5 +9751,53 @@ setTimeout(function() {
 }, 500);
 </script>
 
+<script>
+// =========================================================================
+// FAXINA FINAL: REMOVE A MATÉRIA FANTASMA DO BANCO DE DADOS
+// =========================================================================
+setTimeout(function() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var customLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]");
+    
+    // O nome exato da matéria que queremos eliminar
+    var fantasma = "Língua Portuguesa"; 
+
+    // 1. Remove das matérias importadas
+    if (store.custom_entries) {
+        store.custom_entries = store.custom_entries.filter(function(e) { return e.disc !== fantasma; });
+    }
+    customLocal = customLocal.filter(function(e) { return e.disc !== fantasma; });
+    localStorage.setItem("cldf_v2_custom", JSON.stringify(customLocal));
+
+    // 2. Força exclusão nas entradas padrão do template
+    if (typeof ENTRIES !== "undefined") {
+        ENTRIES.forEach(function(e) {
+            if (e.disc === fantasma) {
+                var k = "e" + e.id + "_r0";
+                if (!store[k]) store[k] = {};
+                store[k]._deleted = true; 
+            }
+        });
+    }
+
+    // 3. Remove das configurações e metas da Aba Gerenciar
+    if (store._cicloConfig && store._cicloConfig.disciplinas) {
+        delete store._cicloConfig.disciplinas[fantasma];
+    }
+
+    // Salva e manda a exclusão para a nuvem
+    store._updatedAt = Date.now();
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    
+    if (typeof window.pushToFirestore === "function") window.pushToFirestore();
+    
+    // Atualiza a tela automaticamente
+    if (typeof window.reAll === "function") window.reAll();
+    if (typeof window.renderVisaoGeral === "function") window.renderVisaoGeral();
+    if (typeof window.renderDisciplinasInteligente === "function") window.renderDisciplinasInteligente();
+    if (typeof window.reconstruirMenusDisciplinas === "function") window.reconstruirMenusDisciplinas();
+}, 1000);
+</script>
+
 </body>
 </html>
