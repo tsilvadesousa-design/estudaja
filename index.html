@@ -9515,5 +9515,82 @@ if (typeof _oldShowPageMenus === 'function') {
 }
 </script>
 
+<script>
+// =========================================================================
+// FIX DEFINITIVO DOS MENUS DE DISCIPLINAS (Aba Gerenciar e Resumos)
+// =========================================================================
+function reconstruirMenusDisciplinas() {
+    try {
+        var disciplinas = new Set();
+        
+        // 1. Pega as matérias do arquivo base importado
+        if (typeof ENTRIES !== 'undefined' && Array.isArray(ENTRIES)) {
+            ENTRIES.forEach(function(e) { if(e.disc) disciplinas.add(e.disc); });
+        }
+        // 2. Pega as matérias criadas manualmente por você
+        try {
+            var custom = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]");
+            custom.forEach(function(e) { if(e.disc) disciplinas.add(e.disc); });
+        } catch(e){}
+        // 3. Pega das edições e overrides (nomes alterados)
+        try {
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            Object.keys(store).forEach(function(key) {
+                if (key.indexOf("_r0") > -1 && store[key] && store[key]._disc) {
+                    disciplinas.add(store[key]._disc);
+                }
+            });
+        } catch(e){}
+
+        var discArray = Array.from(disciplinas).sort();
+
+        // Mapeia todas as caixinhas que precisam receber a lista de disciplinas
+        var campos = [
+            { id: "gf-disc", padrao: "-- selecionar --" },
+            { id: "bulk-disc", padrao: "Todas as disciplinas" },
+            { id: "bulkobs-disc", padrao: "-- selecionar --" },
+            { id: "rename-disc-from", padrao: "-- selecionar --" },
+            { id: "delete-disc-select", padrao: "-- selecionar --" },
+            { id: "res-new-disc", padrao: "-- selecionar --" },
+            { id: "res-disc-f", padrao: "Todas as disciplinas" }
+        ];
+
+        campos.forEach(function(campo) {
+            var elemento = document.getElementById(campo.id);
+            if (!elemento) return;
+            
+            // Só atualiza se o número de opções mudou, para não interromper seu clique
+            if (elemento.options.length !== discArray.length + 1) {
+                var valorAntigo = elemento.value; // Salva o que estava selecionado
+                elemento.innerHTML = '<option value="">' + campo.padrao + '</option>';
+                
+                discArray.forEach(function(disc) {
+                    var opcao = document.createElement("option");
+                    opcao.value = disc;
+                    opcao.textContent = disc;
+                    elemento.appendChild(opcao);
+                });
+                
+                // Restaura a seleção se ela ainda existir
+                if (valorAntigo && discArray.indexOf(valorAntigo) !== -1) {
+                    elemento.value = valorAntigo;
+                }
+            }
+        });
+    } catch(err) {
+        console.error("Erro ao atualizar menus de disciplinas: ", err);
+    }
+}
+
+// Roda imediatamente, e fica checando a cada 1 segundo (para refletir novas matérias)
+reconstruirMenusDisciplinas();
+setInterval(reconstruirMenusDisciplinas, 1000);
+
+// Força a atualização ao clicar nos menus superiores
+document.querySelectorAll(".nbtn").forEach(function(btn) {
+    btn.addEventListener("click", reconstruirMenusDisciplinas);
+});
+</script>
+
 </body>
 </html>
