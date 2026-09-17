@@ -2652,16 +2652,17 @@ var LS = "cldf_v2";
 function lget() { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch(e) { return {}; } }
 function lset(d) {
   try {
+    d._updatedAt = Date.now(); // GARANTE QUE A SUA EDIÇÃO LOCAL É SEMPRE A MAIS NOVA PARA A NUVEM
     localStorage.setItem(LS, JSON.stringify(d));
-    markSaved();
-    cloudPush(false); // dispara sincronização em segundo plano (com debounce)
-    schedulePushToFirestore(); // idem, pro Firebase, se estiver logado
+    if (typeof markSaved === "function") markSaved();
+    if (typeof cloudPush === "function") cloudPush(false);
+    if (typeof schedulePushToFirestore === "function") schedulePushToFirestore();
     return true;
   } catch (ex) {
     if (ex && (ex.name === "QuotaExceededError" || ex.code === 22 || ex.code === 1014)) {
-      showStorageQuotaError();
+      if (typeof showStorageQuotaError === "function") showStorageQuotaError();
     } else {
-      toast("\u26a0 Erro ao salvar: " + ex.message);
+      alert("⚠️ Erro ao salvar: " + ex.message);
     }
     return false;
   }
@@ -6655,41 +6656,56 @@ function initTheme() {
 }
 
 // ── EXPORT / IMPORT ───────────────────────────────────────────
-function exportData() {
+window.exportData = function() {
   try {
-    var data = { version: 2, date: TODAY, userData: lget() };
-    var json = JSON.stringify(data, null, 2);
+    var payload = {
+      version: 3,
+      date: typeof window.TODAY !== 'undefined' ? window.TODAY : "backup",
+      userData: JSON.parse(localStorage.getItem("cldf_v2") || "{}"),
+      customEntries: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+      gabMethods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
+    };
+    var json = JSON.stringify(payload, null, 2);
     var blob = new Blob([json], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url;
-    a.download = "cldf_backup_" + TODAY + ".json";
+    a.download = "EstudaJa_Backup_" + (typeof window.TODAY !== 'undefined' ? window.TODAY : "") + ".json";
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
-    toast("&#8659; Backup exportado!");
-  } catch(ex) {
-    alert("Erro ao exportar: " + ex.message);
-  }
-}
-function importData(ev) {
+    if(typeof toast === 'function') toast("⬇️ Backup exportado!");
+  } catch(ex) { alert("Erro ao exportar: " + ex.message); }
+};
+window.importData = function(ev) {
   var file = ev.target.files[0];
   if (!file) return;
   var r = new FileReader();
   r.onload = function(e) {
     try {
       var d = JSON.parse(e.target.result);
-      if (d.userData) {
-        lset(d.userData);
-        toast("&#8657; Dados importados com sucesso!");
-        reAll();
-      } else { alert("Arquivo inv\u00e1lido: campo userData n\u00e3o encontrado."); }
-    } catch(ex) { alert("Erro ao ler arquivo: " + ex.message); }
+      var mainData = d.userData || d; 
+      Object.keys(mainData).forEach(function(key) {
+        if (mainData[key] && mainData[key]._deleted === true) delete mainData[key];
+      });
+      
+      // MÁGICA: Força o relógio para o futuro, obrigando a nuvem a aceitar seu backup como o Rei absoluto!
+      mainData._updatedAt = Date.now() + 10000;
+      
+      localStorage.setItem("cldf_v2", JSON.stringify(mainData));
+      if (d.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(d.customEntries));
+      if (d.gabMethods) localStorage.setItem("cldf_gab_methods", JSON.stringify(d.gabMethods));
+      
+      // Manda pra nuvem na mesma hora
+      if (typeof pushToFirestore === "function") pushToFirestore();
+      
+      alert("✅ Backup restaurado! A página será atualizada com seus dados salvos na nuvem.");
+      setTimeout(function() { location.reload(); }, 1500);
+    } catch(ex) { alert("❌ Erro ao importar: " + ex.message); }
   };
   r.readAsText(file);
-  ev.target.value = "";
-}
+};
 
 // ── TOAST ─────────────────────────────────────────────────────
 function toast(msg) {
