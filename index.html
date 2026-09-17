@@ -9867,6 +9867,74 @@ setTimeout(function() {
     window.schedulePushToFirestore = function() {}; 
 })();
 </script>
+<script>
+// =========================================================================
+// 🛡️ O ESCUDO DEFINITIVO (BLOQUEIA A NUVEM DE APAGAR O CELULAR)
+// =========================================================================
+(function() {
+    // 1. O Firewall: Proíbe o Firebase de jogar dados velhos por cima do seu backup
+    var originalSetItem = localStorage.setItem;
+    localStorage.setItem = function(key, value) {
+        if (key === "cldf_v2") {
+            try {
+                var novoDado = JSON.parse(value);
+                var dadoAtual = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+                
+                // Se o dado atual tem o selo de proteção, e a nuvem tentar mandar algo sem o selo, BLOQUEIA!
+                if ((dadoAtual._protegido || 0) > (novoDado._protegido || 0)) {
+                    console.log("🛡️ Escudo ativado: Dados velhos da nuvem foram rejeitados.");
+                    return; 
+                }
+            } catch(e) {}
+        }
+        originalSetItem.apply(this, arguments);
+    };
 
+    // 2. A Função que Salva (Esmaga a nuvem com força)
+    window.lset = function(d) {
+        try {
+            d._protegido = Date.now(); // Coloca o selo atualizado de proteção
+            localStorage.setItem("cldf_v2", JSON.stringify(d));
+            
+            if (typeof fbUserDocRef === 'function') {
+                var ref = fbUserDocRef();
+                if (ref) {
+                    ref.set({
+                        main: d,
+                        custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                        methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+                        _updatedAt: Date.now(),
+                        _protegido: Date.now()
+                    }, {merge: true});
+                }
+            }
+            if (typeof markSaved === "function") markSaved();
+            return true;
+        } catch (ex) { return false; }
+    };
+
+    // 3. Importação Blindada
+    window.importData = function(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var raw = JSON.parse(e.target.result);
+            var importedData = raw.userData ? raw.userData : raw;
+            
+            importedData._hideBase = true; // Extermina matérias fantasmas originais
+            importedData._protegido = Date.now() + 9999999; // Selo de Imortalidade
+            
+            if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
+            window.lset(importedData); // Dá a ordem para o Firebase aceitar e calar a boca
+            
+            alert("✅ ATENÇÃO: Backup Blindado com Sucesso!");
+            setTimeout(function() { location.reload(); }, 1000);
+        };
+        reader.readAsText(file);
+    };
+})();
+</script>
+  
 </body>
 </html>
