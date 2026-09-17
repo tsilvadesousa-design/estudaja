@@ -9936,6 +9936,64 @@ setTimeout(function() {
     };
 })();
 </script>
+<script>
+// =========================================================================
+// CORREÇÃO DEFINITIVA: ESPERAR O UPLOAD TERMINAR ANTES DE RECARREGAR
+// =========================================================================
+(function() {
+    // 1. Tira qualquer "venda" que tenha ficado presa no sistema
+    var local = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    delete local._hideBase;
+    delete local._protegido;
+    localStorage.setItem("cldf_v2", JSON.stringify(local));
+
+    // 2. Importação Paciente: Só recarrega quando a Nuvem confirma o recebimento
+    window.importData = function(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var raw = JSON.parse(e.target.result);
+            var importedData = raw.userData ? raw.userData : raw;
+            
+            delete importedData._hideBase; // Garante que tudo vai aparecer
+            importedData._updatedAt = Date.now(); // Carimba a hora
+            
+            // Salva no celular instantaneamente
+            localStorage.setItem("cldf_v2", JSON.stringify(importedData));
+            if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
+            
+            // Se estiver logado, ENVIA E ESPERA A CONFIRMAÇÃO DA NUVEM
+            if (typeof fbUserDocRef === 'function') {
+                var ref = fbUserDocRef();
+                if (ref) {
+                    alert("⏳ Enviando o backup para o Google. Por favor, aguarde o aviso de Sucesso e não feche a página...");
+                    
+                    ref.set({
+                        main: importedData,
+                        custom: raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                        methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+                        _updatedAt: Date.now()
+                    }).then(function() {
+                        // Só executa essa linha quando o Google avisar que terminou de salvar
+                        alert("✅ SUCESSO! O Google confirmou o recebimento do backup. A página vai recarregar agora.");
+                        location.reload();
+                    }).catch(function(erro) {
+                        alert("❌ Erro na internet ao enviar: " + erro.message);
+                    });
+                    
+                    return; // Faz o código PARAR aqui para não recarregar antes da hora
+                }
+            }
+            
+            // Se estiver sem internet ou deslogado, recarrega direto
+            location.reload();
+        };
+        reader.readAsText(file);
+    };
+})();
+</script>
   
 </body>
 </html>
