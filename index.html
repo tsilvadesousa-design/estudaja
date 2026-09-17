@@ -9592,5 +9592,164 @@ document.querySelectorAll(".nbtn").forEach(function(btn) {
 });
 </script>
 
+<script>
+// =========================================================================
+// EXORCISTA DE MATÉRIAS FANTASMAS E FIX DOS MENUS
+// =========================================================================
+
+// 1. Força o sistema a esconder o edital padrão (template genérico) e usar SÓ o seu backup
+var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+store._hideBase = true; 
+localStorage.setItem("cldf_v2", JSON.stringify(store));
+
+// 2. Limpa os menus suspensos para mostrar APENAS matérias ativas
+window.reconstruirMenusDisciplinas = function() {
+    var disciplinas = new Set();
+    var all = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
+    all.forEach(function(e) { if (e && e.disc) disciplinas.add(e.disc); });
+    
+    var discArray = Array.from(disciplinas).sort();
+    var campos = ["gf-disc", "bulk-disc", "bulkobs-disc", "rename-disc-from", "delete-disc-select", "res-new-disc", "res-disc-f"];
+    campos.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var old = el.value;
+        var padrao = el.options[0] ? el.options[0].textContent : "-- selecionar --";
+        if (el.options.length !== discArray.length + 1) {
+            el.innerHTML = '<option value="">' + padrao + '</option>';
+            discArray.forEach(function(d) {
+                var opt = document.createElement("option");
+                opt.value = d; opt.textContent = d;
+                el.appendChild(opt);
+            });
+            if (old && discArray.indexOf(old) > -1) el.value = old;
+        }
+    });
+};
+
+// 3. Blinda a Visão Geral para ignorar "restos" de configurações antigas
+window.renderVisaoGeral = function() {
+    var container = document.getElementById("painel-visao-geral");
+    if (!container) return;
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
+    var simultaneas = Number(cicloCfg.numSimult) || 4;
+    
+    var allEntries = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
+    var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
+    var htmlMetas = "";
+    
+    // Filtro contra fantasmas
+    var disciplinasReais = {};
+    allEntries.forEach(function(e) { if(e && e.disc) disciplinasReais[e.disc] = true; });
+
+    Object.keys(discSettings).forEach(function(dName) {
+        if (!disciplinasReais[dName]) return; // PULA OS FANTASMAS!
+
+        var cfg = discSettings[dName];
+        if (cfg.status === "pausada") {
+            pausadas++;
+        } else {
+            ativas++;
+            var carga = Number(cfg.cargaHoraria) || 3;
+            somaCargaAtivas += carga;
+            var prazoDias = Number(cfg.prazoDiasRestantes) || 30;
+            var semanas = prazoDias / 7 || 1;
+
+            var pendentes = allEntries.filter(function(e) {
+                var ud = store["e"+e.id+"_r0"] || {};
+                var stat = ud.status || (e.ok === "✅" ? "ok" : "pend");
+                return e.disc === dName && stat !== "ok";
+            }).length;
+
+            var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
+            var statusViabilidade = "✅ Viável";
+            var corViab = "var(--green)";
+
+            if (pendentes === 0) {
+                statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
+            } else if (horasNecessariasPorSem > carga * 1.5) {
+                statusViabilidade = "❌ Incompatível (Aumente o prazo)"; corViab = "var(--red)";
+            } else if (horasNecessariasPorSem > carga) {
+                statusViabilidade = "⚠️ Apertada"; corViab = "orange";
+            }
+
+            htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
+                '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
+                'Meta: <b>'+prazoDias+' dias</b> | Carga separada: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
+                '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
+            '</div>';
+        }
+    });
+
+    var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
+    container.innerHTML = '' +
+        '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
+            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span></div>' +
+            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span></div>' +
+            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span></div>' +
+            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span></div>' +
+        '</div>' +
+        '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas</h4>' +
+        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina ativa.</span>");
+};
+
+// 4. Blinda a Lista de Disciplinas (Status, Prioridades e Metas)
+window.renderDisciplinasInteligente = function() {
+    var container = document.getElementById("lista-disciplinas-inteligente");
+    if (!container) return; 
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
+    
+    var disciplinasUnicas = [];
+    allEntries.forEach(function(e) {
+        if (e && e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
+    });
+
+    if (disciplinasUnicas.length === 0) {
+        container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada.</div>';
+        return;
+    }
+
+    var html = "";
+    disciplinasUnicas.forEach(function(dName) {
+        var cfg = discSettings[dName] || {};
+        var status = cfg.status || "ativa";
+        var prioridade = cfg.prioridade || 3;
+        var frequencia = cfg.frequenciaDesejada || 1;
+        var prazo = cfg.prazoDiasRestantes || 30;
+        var carga = cfg.cargaHoraria || 3; 
+        var isPausada = (status !== "ativa");
+        var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
+
+        html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
+                '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
+                    '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
+                    '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
+                '</div>' +
+                '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
+                    '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                '</div>' +
+            '</div>';
+    });
+    container.innerHTML = html;
+};
+
+// Refaz a varredura para garantir
+setTimeout(function() {
+    window.reconstruirMenusDisciplinas();
+    window.renderVisaoGeral();
+    window.renderDisciplinasInteligente();
+}, 500);
+</script>
+
 </body>
 </html>
