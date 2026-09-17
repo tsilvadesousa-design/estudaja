@@ -9938,23 +9938,34 @@ setTimeout(function() {
 </script>
 <script>
 // =========================================================================
-// CORREÇÃO DEFINITIVA: FILTRO EMAGRECEDOR DE DADOS (ANTI-LIMITE DE 1MB)
+// CORREÇÃO DEFINITIVA: O TRATOR DE DADOS (CORTA QUALQUER ARQUIVO GIGANTE)
 // =========================================================================
 (function() {
-    // 1. Tira qualquer "venda" que tenha ficado no sistema
+    // 1. Limpa qualquer erro antigo
     var local = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     delete local._hideBase;
     localStorage.setItem("cldf_v2", JSON.stringify(local));
 
-    // 2. A Mágica: Remove o código gigante das imagens antes de enviar pra nuvem
-    function emagrecerDados(dados) {
-        var texto = JSON.stringify(dados);
-        // Encontra imagens coladas (Base64) e substitui por um aviso leve
-        texto = texto.replace(/data:image\/[a-zA-Z0-9+;/=]+/gi, "IMAGEM_REMOVIDA_POR_EXCESSO_DE_PESO");
-        return JSON.parse(texto);
+    // 2. O ROLO COMPRESSOR: Se achar um bloco de dados absurdo (>15.000 caracteres), ele corta.
+    function passarOTrator(dados) {
+        if (typeof dados === 'string') {
+            if (dados.length > 15000) {
+                return "⚠️ [CONTEÚDO PESADO REMOVIDO: A nuvem do Google não suporta imagens/arquivos colados nos resumos. O excesso foi cortado para o sistema voltar a funcionar.]";
+            }
+            return dados;
+        } else if (Array.isArray(dados)) {
+            return dados.map(passarOTrator);
+        } else if (dados !== null && typeof dados === 'object') {
+            var novoObj = {};
+            for (var key in dados) {
+                novoObj[key] = passarOTrator(dados[key]);
+            }
+            return novoObj;
+        }
+        return dados;
     }
 
-    // 3. Importação à prova de falhas
+    // 3. Importação Blindada
     window.importData = function(event) {
         var file = event.target.files[0];
         if (!file) return;
@@ -9967,27 +9978,27 @@ setTimeout(function() {
             delete importedData._hideBase;
             importedData._updatedAt = Date.now();
             
-            // Salva no celular com TUDO (suas imagens continuam locais)
+            // Salva no celular
             localStorage.setItem("cldf_v2", JSON.stringify(importedData));
             if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
             
             if (typeof fbUserDocRef === 'function') {
                 var ref = fbUserDocRef();
                 if (ref) {
-                    alert("⏳ Aplicando dieta nos dados e enviando para o Google. Aguarde...");
+                    alert("⏳ Passando o rolo compressor para remover arquivos invisíveis e enviando para o Google. Aguarde...");
                     
                     var payloadLeve = {
-                        main: emagrecerDados(importedData),
-                        custom: emagrecerDados(raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
+                        main: passarOTrator(importedData),
+                        custom: passarOTrator(raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
                         methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
                         _updatedAt: Date.now()
                     };
 
                     ref.set(payloadLeve).then(function() {
-                        alert("✅ SUCESSO! Nuvem atualizada. A página vai recarregar.");
+                        alert("✅ SUCESSO! Nuvem engoliu o arquivo levinho. A página vai recarregar.");
                         location.reload();
                     }).catch(function(erro) {
-                        alert("❌ Erro: " + erro.message);
+                        alert("❌ Ainda deu erro: " + erro.message);
                     });
                     return; 
                 }
@@ -9997,7 +10008,7 @@ setTimeout(function() {
         reader.readAsText(file);
     };
 
-    // 4. Salvamento diário com dieta
+    // 4. Salvamento seguro pro dia a dia
     window.lset = function(d) {
         try {
             d._updatedAt = Date.now();
@@ -10008,8 +10019,8 @@ setTimeout(function() {
                 var ref = fbUserDocRef();
                 if (ref) {
                     ref.set({
-                        main: emagrecerDados(d),
-                        custom: emagrecerDados(JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
+                        main: passarOTrator(d),
+                        custom: passarOTrator(JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
                         methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
                         _updatedAt: Date.now()
                     }, {merge: true});
