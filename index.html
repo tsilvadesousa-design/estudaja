@@ -9226,40 +9226,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
 <script>
 // =========================================================================
-// RESGATE DE DADOS E FIX DEFINITIVO (Agenda, Visão Geral e Backup)
+// PACOTE DEFINITIVO DE BLINDAGEM DO ESTUDAJÁ
 // =========================================================================
 
-// 1. Resgata os tópicos personalizados de qualquer lugar que tenham sido salvos
+// 1. Corrige o vazamento visual da aba Gerenciar
+var s = document.createElement("style");
+s.innerHTML = ".glbl:contains('Aguardando na Fila') { display: none !important; }";
+document.head.appendChild(s);
+
+// 2. Sistema Blindado de Leitura de Matérias (Junta originais + criadas)
 window.getCustomEntries = function() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var customFromStore = store.custom_entries || [];
     var customFromLocal = [];
     try { customFromLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e) {}
-    
-    // Une os dois pra garantir que nada foi perdido
-    var merged = customFromStore.concat(customFromLocal);
-    var unique = [];
-    var ids = new Set();
+    var merged = (store.custom_entries || []).concat(customFromLocal);
+    var unique = [], ids = new Set();
     merged.forEach(function(item) {
         if (!ids.has(item.id)) { ids.add(item.id); unique.push(item); }
     });
     return unique;
 };
 
-// 2. Garante que os tópicos do Edital apareçam
 window.getAllEntries = function() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var custom = window.getCustomEntries();
-    
-    // Desliga a trava de "Apagar Tudo" se o backup foi perdido
-    var hideBase = store._hideBase === true;
-    if (hideBase && custom.length === 0) {
-        hideBase = false; 
-        store._hideBase = false;
-        localStorage.setItem("cldf_v2", JSON.stringify(store));
-    }
-
-    if (hideBase) return custom;
+    if (store._hideBase) return custom;
 
     var base = (typeof ENTRIES !== "undefined" ? ENTRIES : []).map(function(e) {
         var ud = store["e" + e.id + "_r0"] || {};
@@ -9280,337 +9271,106 @@ window.getAllEntries = function() {
     return base.concat(custom);
 };
 
-// 3. Renderiza a Visão Geral
-window.renderVisaoGeral = function() {
-    var container = document.getElementById("painel-visao-geral");
-    if (!container) return;
-
-    try {
-        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var cicloCfg = store._cicloConfig || {};
-        var discSettings = cicloCfg.disciplinas || {};
-        var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
-        var simultaneas = Number(cicloCfg.numSimult) || 4;
-        
-        var allEntries = window.getAllEntries();
-        var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
-        var htmlMetas = "";
-        
-        var discNames = Object.keys(discSettings);
-        discNames.forEach(function(dName) {
-            var cfg = discSettings[dName];
-            if (cfg.status === "pausada") {
-                pausadas++;
-            } else {
-                ativas++;
-                var carga = Number(cfg.cargaHoraria) || 3;
-                somaCargaAtivas += carga;
-                var prazoDias = Number(cfg.prazoDiasRestantes) || 30;
-                var semanas = prazoDias / 7 || 1;
-
-                var pendentes = allEntries.filter(function(e) {
-                    var ud = store["e"+e.id+"_r0"] || {};
-                    var stat = ud.status || (e.ok === "✅" ? "ok" : "pend");
-                    return e.disc === dName && stat !== "ok";
-                }).length;
-
-                var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
-                var statusViabilidade = "✅ Viável";
-                var corViab = "var(--green)";
-
-                if (pendentes === 0) {
-                    statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
-                } else if (horasNecessariasPorSem > carga * 1.5) {
-                    statusViabilidade = "❌ Incompatível (Aumente o prazo)"; corViab = "var(--red)";
-                } else if (horasNecessariasPorSem > carga) {
-                    statusViabilidade = "⚠️ Apertada"; corViab = "orange";
-                }
-
-                htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
-                    '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
-                    'Meta: <b>'+prazoDias+' dias</b> | Carga: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
-                    '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
-                '</div>';
-            }
-        });
-
-        var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
-        var htmlPainel = '' +
-            '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
-                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                    '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span>' +
-                '</div>' +
-                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                    '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span>' +
-                '</div>' +
-                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                    '<h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span>' +
-                '</div>' +
-                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                    '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span>' +
-                '</div>' +
-            '</div>' +
-            '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas</h4>' +
-            (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina configurada ou ativa ainda.</span>");
-            
-        container.innerHTML = htmlPainel;
-    } catch(e) {
-        container.innerHTML = "<span style='color:var(--red)'>Erro ao carregar visão geral: " + e.message + "</span>";
-    }
+window.rebuildEntryMap = function() {
+  window.entryMap = {};
+  window.getAllEntries().forEach(function(e) { window.entryMap[e.id] = e; });
 };
 
-// 4. Renderiza Disciplinas e ativa salvamento
-window.salvarConfigDisciplina = function(dName, dNameId) {
+// 3. Agenda e Replano ignorando matérias pausadas
+window.rebuildAgMap = function() {
+  if (typeof agMap === 'undefined') window.agMap = {};
+  for (var k in agMap) delete agMap[k];
+  var ud = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+  var cicloCfg = ud._cicloConfig || {};
+  var discSettings = cicloCfg.disciplinas || {};
+  
+  window.getAllEntries().forEach(function(e) {
+    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+    if (statusDisc === "pausada") return;
+    function push(ds, tipo, rn) {
+      if (!ds) return;
+      if (!agMap[ds]) agMap[ds] = [];
+      agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+    }
+    var u0 = ud["e"+e.id+"_r0"] || {};
+    var novoDate = (u0 && u0.date) ? u0.date : e.date;
+    push(novoDate, "NOVO", 0);
+    (e.revs || []).forEach(function(r) {
+      var ur = ud["e"+e.id+"_r"+r.num] || {};
+      var revDate = (ur && ur.date) ? ur.date : r.date;
+      push(revDate, "REV", r.num);
+    });
+  });
+};
+
+window.applyReplan = function() {
+  var start = document.getElementById("replan-start").value;
+  var daily = parseInt(document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1") || 1;
+  var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+  if (!start) { alert("⚠️ Selecione uma data de início"); return; }
+  
+  try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    if (!store._cicloConfig) store._cicloConfig = {};
-    if (!store._cicloConfig.disciplinas) store._cicloConfig.disciplinas = {};
-
-    store._cicloConfig.disciplinas[dName] = {
-        status: document.getElementById("cfg-st-" + dNameId).value,
-        prioridade: Number(document.getElementById("cfg-pr-" + dNameId).value),
-        frequenciaDesejada: Number(document.getElementById("cfg-fq-" + dNameId).value),
-        cargaHoraria: Number(document.getElementById("cfg-cg-" + dNameId).value),
-        prazoDiasRestantes: Number(document.getElementById("cfg-pz-" + dNameId).value)
-    };
-
-    // Salva local e sobe pra nuvem imediatamente
-    store._updatedAt = Date.now();
-    localStorage.setItem("cldf_v2", JSON.stringify(store));
-    window.renderDisciplinasInteligente(); 
-    window.renderVisaoGeral();
-    if (typeof window.reAll === "function") window.reAll();
-    if (typeof window.pushToFirestore === "function") window.pushToFirestore();
-};
-
-window.renderDisciplinasInteligente = function() {
-    var container = document.getElementById("lista-disciplinas-inteligente");
-    if (!container) return; 
-
-    try {
-        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var cicloCfg = store._cicloConfig || {};
-        var discSettings = cicloCfg.disciplinas || {};
-        var allEntries = window.getAllEntries();
-        
-        var disciplinasUnicas = [];
-        allEntries.forEach(function(e) {
-            if (e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
-        });
-
-        if (disciplinasUnicas.length === 0) {
-            container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada. Tente importar novamente.</div>';
-            return;
-        }
-
-        var html = "";
-        disciplinasUnicas.forEach(function(dName) {
-            var cfg = discSettings[dName] || {};
-            var status = cfg.status || "ativa";
-            var prioridade = cfg.prioridade || 3;
-            var frequencia = cfg.frequenciaDesejada || 1;
-            var prazo = cfg.prazoDiasRestantes || 30;
-            var carga = cfg.cargaHoraria || 3; 
-            var isPausada = (status !== "ativa");
-            var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
-
-            html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
-                    '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
-                        '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
-                        '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
-                    '</div>' +
-                    '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
-                        '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
-                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '</div>' +
-                '</div>';
-        });
-        
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = '<div style="padding:1rem; color:var(--red);">Erro ao carregar disciplinas: '+e.message+'</div>';
+    var result = typeof buildSmartSchedule === 'function' ? buildSmartSchedule(start, daily, "", true, respectManual, store._cicloConfig || {}) : null;
+    if (!result || !result.pendingNew || !result.pendingNew.length) { 
+        alert("⚠️ Nenhum tópico novo pra reagendar"); return; 
     }
-};
-
-// 5. Acionador Automático: Garante que os painéis sempre carreguem
-setInterval(function() {
-    var page = document.getElementById("page-gerenciar");
-    var container = document.getElementById("painel-visao-geral");
-    if (page && page.classList.contains("active") && container && container.innerHTML.indexOf("Carregando") > -1) {
-        window.renderDisciplinasInteligente();
-        window.renderVisaoGeral();
-    }
-}, 800);
-
-setTimeout(function() {
-    if (typeof window.rebuildEntryMap === 'function') window.rebuildEntryMap();
-    window.renderDisciplinasInteligente();
-    window.renderVisaoGeral();
-    if (typeof window.reAll === 'function') window.reAll();
-}, 500);
-
-</script>
-
-<script>
-// =========================================================================
-// CORREÇÃO DOS MENUS SUSPENSOS DE DISCIPLINAS (Aba Gerenciar)
-// =========================================================================
-window.atualizarMenusGerenciar = function() {
-    // 1. Coleta todas as disciplinas do seu sistema
-    var todasEntradas = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
-    var disciplinas = [];
-    
-    todasEntradas.forEach(function(item) {
-        if (item && item.disc && disciplinas.indexOf(item.disc) === -1) {
-            disciplinas.push(item.disc);
-        }
+    Object.keys(result.schedule).forEach(function(eid) {
+      var s = result.schedule[eid];
+      var ud0 = store["e" + eid + "_r0"] || {};
+      ud0.date = s.studyDate;
+      delete ud0._manualDate;
+      store["e" + eid + "_r0"] = ud0;
+      Object.keys(s.revDates).forEach(function(rnum) {
+        var udr = store["e" + eid + "_r" + rnum] || {};
+        if ((udr.status || "pend") !== "ok") { udr.date = s.revDates[rnum]; store["e" + eid + "_r" + rnum] = udr; }
+      });
     });
-    disciplinas.sort(); // Organiza em ordem alfabética para facilitar a busca
-
-    // 2. Mapeia todos os campos da Aba Gerenciar que precisam das disciplinas
-    var campos = [
-        { id: "gf-disc", padrao: "-- selecionar --" },
-        { id: "bulk-disc", padrao: "Todas as disciplinas" },
-        { id: "bulkobs-disc", padrao: "-- selecionar --" },
-        { id: "rename-disc-from", padrao: "-- selecionar --" },
-        { id: "delete-disc-select", padrao: "-- selecionar --" }
-    ];
-
-    // 3. Preenche cada um deles com as opções reais do seu edital
-    campos.forEach(function(campo) {
-        var elemento = document.getElementById(campo.id);
-        if (!elemento) return;
-        
-        var valorAntigo = elemento.value; // Salva o que você já tinha selecionado
-        elemento.innerHTML = '<option value="">' + campo.padrao + '</option>';
-        
-        disciplinas.forEach(function(disc) {
-            var opcao = document.createElement("option");
-            opcao.value = disc;
-            opcao.textContent = disc;
-            elemento.appendChild(opcao);
-        });
-        
-        // Tenta restaurar a seleção se houver
-        if (valorAntigo && disciplinas.indexOf(valorAntigo) !== -1) {
-            elemento.value = valorAntigo;
-        }
-    });
+    window.lset(store);
+    window.rebuildEntryMap(); window.rebuildAgMap();
+    if (typeof renderAgenda === 'function') renderAgenda();
+    alert("✅ Ciclo replanejado!");
+  } catch(ex) { alert("Erro: " + ex.message); }
 };
 
-// Força o preenchimento imediatamente ao carregar a página
-setTimeout(window.atualizarMenusGerenciar, 800);
+// 4. Salvar na nuvem forçando a aceitação do seu PC como a Versão Mestra
+window.lset = function(d) {
+  try {
+    d._updatedAt = Date.now() + 10000;
+    localStorage.setItem("cldf_v2", JSON.stringify(d));
+    if (typeof markSaved === "function") markSaved();
+    if (typeof cloudPush === "function") cloudPush(false);
+    if (typeof schedulePushToFirestore === "function") schedulePushToFirestore();
+    return true;
+  } catch (ex) { return false; }
+};
 
-// Garante que os menus se atualizem sozinhos sempre que você clicar na aba "Gerenciar"
-var _oldShowPageMenus = window.showPage;
-if (typeof _oldShowPageMenus === 'function') {
-    window.showPage = function(id, btn) {
-        _oldShowPageMenus(id, btn); // Comportamento normal de trocar de tela
-        if (id === "gerenciar") {
-            window.atualizarMenusGerenciar();
-        }
-    };
-}
-</script>
+window.pushToFirestore = function() {
+  var ref = typeof fbUserDocRef === 'function' ? fbUserDocRef() : null;
+  if (!ref) return;
+  var payload = {
+    main: JSON.parse(localStorage.getItem("cldf_v2") || "{}"),
+    custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+    methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+    _updatedAt: Date.now() + 10000 
+  };
+  window._fbSavingRemote = true;
+  ref.set(payload).then(function() {
+    var el = document.getElementById("fb-sync-status");
+    if(el) el.textContent = "☁️ Sincronizado";
+  }).catch(function(ex) { window._fbSavingRemote = false; });
+};
 
-<script>
-// =========================================================================
-// FIX DEFINITIVO DOS MENUS DE DISCIPLINAS (Aba Gerenciar e Resumos)
-// =========================================================================
-function reconstruirMenusDisciplinas() {
-    try {
-        var disciplinas = new Set();
-        
-        // 1. Pega as matérias do arquivo base importado
-        if (typeof ENTRIES !== 'undefined' && Array.isArray(ENTRIES)) {
-            ENTRIES.forEach(function(e) { if(e.disc) disciplinas.add(e.disc); });
-        }
-        // 2. Pega as matérias criadas manualmente por você
-        try {
-            var custom = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]");
-            custom.forEach(function(e) { if(e.disc) disciplinas.add(e.disc); });
-        } catch(e){}
-        // 3. Pega das edições e overrides (nomes alterados)
-        try {
-            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-            Object.keys(store).forEach(function(key) {
-                if (key.indexOf("_r0") > -1 && store[key] && store[key]._disc) {
-                    disciplinas.add(store[key]._disc);
-                }
-            });
-        } catch(e){}
+// 5. Preenchimento Automático dos Menus de Disciplinas
+window.atualizarMenus = function() {
+    var navDt = document.getElementById("nav-dt"); 
+    if (navDt && typeof TODAY !== 'undefined' && typeof fmtD !== 'undefined') navDt.textContent = fmtD(TODAY) + " \u00b7 " + fmtWd(TODAY);
 
-        var discArray = Array.from(disciplinas).sort();
-
-        // Mapeia todas as caixinhas que precisam receber a lista de disciplinas
-        var campos = [
-            { id: "gf-disc", padrao: "-- selecionar --" },
-            { id: "bulk-disc", padrao: "Todas as disciplinas" },
-            { id: "bulkobs-disc", padrao: "-- selecionar --" },
-            { id: "rename-disc-from", padrao: "-- selecionar --" },
-            { id: "delete-disc-select", padrao: "-- selecionar --" },
-            { id: "res-new-disc", padrao: "-- selecionar --" },
-            { id: "res-disc-f", padrao: "Todas as disciplinas" }
-        ];
-
-        campos.forEach(function(campo) {
-            var elemento = document.getElementById(campo.id);
-            if (!elemento) return;
-            
-            // Só atualiza se o número de opções mudou, para não interromper seu clique
-            if (elemento.options.length !== discArray.length + 1) {
-                var valorAntigo = elemento.value; // Salva o que estava selecionado
-                elemento.innerHTML = '<option value="">' + campo.padrao + '</option>';
-                
-                discArray.forEach(function(disc) {
-                    var opcao = document.createElement("option");
-                    opcao.value = disc;
-                    opcao.textContent = disc;
-                    elemento.appendChild(opcao);
-                });
-                
-                // Restaura a seleção se ela ainda existir
-                if (valorAntigo && discArray.indexOf(valorAntigo) !== -1) {
-                    elemento.value = valorAntigo;
-                }
-            }
-        });
-    } catch(err) {
-        console.error("Erro ao atualizar menus de disciplinas: ", err);
-    }
-}
-
-// Roda imediatamente, e fica checando a cada 1 segundo (para refletir novas matérias)
-reconstruirMenusDisciplinas();
-setInterval(reconstruirMenusDisciplinas, 1000);
-
-// Força a atualização ao clicar nos menus superiores
-document.querySelectorAll(".nbtn").forEach(function(btn) {
-    btn.addEventListener("click", reconstruirMenusDisciplinas);
-});
-</script>
-
-<script>
-// =========================================================================
-// EXORCISTA DE MATÉRIAS FANTASMAS E FIX DOS MENUS
-// =========================================================================
-
-// 1. Força o sistema a esconder o edital padrão (template genérico) e usar SÓ o seu backup
-var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-store._hideBase = true; 
-localStorage.setItem("cldf_v2", JSON.stringify(store));
-
-// 2. Limpa os menus suspensos para mostrar APENAS matérias ativas
-window.reconstruirMenusDisciplinas = function() {
     var disciplinas = new Set();
-    var all = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
-    all.forEach(function(e) { if (e && e.disc) disciplinas.add(e.disc); });
-    
+    window.getAllEntries().forEach(function(e) { if (e && e.disc) disciplinas.add(e.disc); });
     var discArray = Array.from(disciplinas).sort();
-    var campos = ["gf-disc", "bulk-disc", "bulkobs-disc", "rename-disc-from", "delete-disc-select", "res-new-disc", "res-disc-f"];
-    campos.forEach(function(id) {
+    
+    ["gf-disc", "bulk-disc", "bulkobs-disc", "rename-disc-from", "delete-disc-select", "res-new-disc", "res-disc-f"].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         var old = el.value;
@@ -9627,176 +9387,16 @@ window.reconstruirMenusDisciplinas = function() {
     });
 };
 
-// 3. Blinda a Visão Geral para ignorar "restos" de configurações antigas
-window.renderVisaoGeral = function() {
-    var container = document.getElementById("painel-visao-geral");
-    if (!container) return;
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var cicloCfg = store._cicloConfig || {};
-    var discSettings = cicloCfg.disciplinas || {};
-    var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
-    var simultaneas = Number(cicloCfg.numSimult) || 4;
-    
-    var allEntries = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
-    var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
-    var htmlMetas = "";
-    
-    // Filtro contra fantasmas
-    var disciplinasReais = {};
-    allEntries.forEach(function(e) { if(e && e.disc) disciplinasReais[e.disc] = true; });
-
-    Object.keys(discSettings).forEach(function(dName) {
-        if (!disciplinasReais[dName]) return; // PULA OS FANTASMAS!
-
-        var cfg = discSettings[dName];
-        if (cfg.status === "pausada") {
-            pausadas++;
-        } else {
-            ativas++;
-            var carga = Number(cfg.cargaHoraria) || 3;
-            somaCargaAtivas += carga;
-            var prazoDias = Number(cfg.prazoDiasRestantes) || 30;
-            var semanas = prazoDias / 7 || 1;
-
-            var pendentes = allEntries.filter(function(e) {
-                var ud = store["e"+e.id+"_r0"] || {};
-                var stat = ud.status || (e.ok === "✅" ? "ok" : "pend");
-                return e.disc === dName && stat !== "ok";
-            }).length;
-
-            var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
-            var statusViabilidade = "✅ Viável";
-            var corViab = "var(--green)";
-
-            if (pendentes === 0) {
-                statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
-            } else if (horasNecessariasPorSem > carga * 1.5) {
-                statusViabilidade = "❌ Incompatível (Aumente o prazo)"; corViab = "var(--red)";
-            } else if (horasNecessariasPorSem > carga) {
-                statusViabilidade = "⚠️ Apertada"; corViab = "orange";
-            }
-
-            htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
-                '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
-                'Meta: <b>'+prazoDias+' dias</b> | Carga separada: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
-                '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
-            '</div>';
-        }
-    });
-
-    var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
-    container.innerHTML = '' +
-        '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
-            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span></div>' +
-            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span></div>' +
-            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span></div>' +
-            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;"><h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span></div>' +
-        '</div>' +
-        '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas</h4>' +
-        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina ativa.</span>");
-};
-
-// 4. Blinda a Lista de Disciplinas (Status, Prioridades e Metas)
-window.renderDisciplinasInteligente = function() {
-    var container = document.getElementById("lista-disciplinas-inteligente");
-    if (!container) return; 
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var cicloCfg = store._cicloConfig || {};
-    var discSettings = cicloCfg.disciplinas || {};
-    var allEntries = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
-    
-    var disciplinasUnicas = [];
-    allEntries.forEach(function(e) {
-        if (e && e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
-    });
-
-    if (disciplinasUnicas.length === 0) {
-        container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada.</div>';
-        return;
-    }
-
-    var html = "";
-    disciplinasUnicas.forEach(function(dName) {
-        var cfg = discSettings[dName] || {};
-        var status = cfg.status || "ativa";
-        var prioridade = cfg.prioridade || 3;
-        var frequencia = cfg.frequenciaDesejada || 1;
-        var prazo = cfg.prazoDiasRestantes || 30;
-        var carga = cfg.cargaHoraria || 3; 
-        var isPausada = (status !== "ativa");
-        var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
-
-        html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
-                '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
-                    '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
-                    '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
-                '</div>' +
-                '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
-                    '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
-                '</div>' +
-            '</div>';
-    });
-    container.innerHTML = html;
-};
-
-// Refaz a varredura para garantir
+// Inicia TUDO com segurança 1 segundo após a página abrir
 setTimeout(function() {
-    window.reconstruirMenusDisciplinas();
-    window.renderVisaoGeral();
-    window.renderDisciplinasInteligente();
-}, 500);
-</script>
-
-<script>
-// =========================================================================
-// FAXINA FINAL: REMOVE A MATÉRIA FANTASMA DO BANCO DE DADOS
-// =========================================================================
-setTimeout(function() {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var customLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]");
-    
-    // O nome exato da matéria que queremos eliminar
-    var fantasma = "Língua Portuguesa"; 
-
-    // 1. Remove das matérias importadas
-    if (store.custom_entries) {
-        store.custom_entries = store.custom_entries.filter(function(e) { return e.disc !== fantasma; });
-    }
-    customLocal = customLocal.filter(function(e) { return e.disc !== fantasma; });
-    localStorage.setItem("cldf_v2_custom", JSON.stringify(customLocal));
-
-    // 2. Força exclusão nas entradas padrão do template
-    if (typeof ENTRIES !== "undefined") {
-        ENTRIES.forEach(function(e) {
-            if (e.disc === fantasma) {
-                var k = "e" + e.id + "_r0";
-                if (!store[k]) store[k] = {};
-                store[k]._deleted = true; 
-            }
-        });
-    }
-
-    // 3. Remove das configurações e metas da Aba Gerenciar
-    if (store._cicloConfig && store._cicloConfig.disciplinas) {
-        delete store._cicloConfig.disciplinas[fantasma];
-    }
-
-    // Salva e manda a exclusão para a nuvem
-    store._updatedAt = Date.now();
-    localStorage.setItem("cldf_v2", JSON.stringify(store));
-    
-    if (typeof window.pushToFirestore === "function") window.pushToFirestore();
-    
-    // Atualiza a tela automaticamente
-    if (typeof window.reAll === "function") window.reAll();
-    if (typeof window.renderVisaoGeral === "function") window.renderVisaoGeral();
-    if (typeof window.renderDisciplinasInteligente === "function") window.renderDisciplinasInteligente();
-    if (typeof window.reconstruirMenusDisciplinas === "function") window.reconstruirMenusDisciplinas();
+    window.rebuildEntryMap();
+    window.rebuildAgMap();
+    window.atualizarMenus();
+    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+    if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
+    if (typeof renderAgenda === 'function') renderAgenda();
 }, 1000);
+setInterval(window.atualizarMenus, 2000);
 </script>
 
 </body>
