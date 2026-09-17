@@ -9938,16 +9938,23 @@ setTimeout(function() {
 </script>
 <script>
 // =========================================================================
-// CORREÇÃO DEFINITIVA: ESPERAR O UPLOAD TERMINAR ANTES DE RECARREGAR
+// CORREÇÃO DEFINITIVA: FILTRO EMAGRECEDOR DE DADOS (ANTI-LIMITE DE 1MB)
 // =========================================================================
 (function() {
-    // 1. Tira qualquer "venda" que tenha ficado presa no sistema
+    // 1. Tira qualquer "venda" que tenha ficado no sistema
     var local = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     delete local._hideBase;
-    delete local._protegido;
     localStorage.setItem("cldf_v2", JSON.stringify(local));
 
-    // 2. Importação Paciente: Só recarrega quando a Nuvem confirma o recebimento
+    // 2. A Mágica: Remove o código gigante das imagens antes de enviar pra nuvem
+    function emagrecerDados(dados) {
+        var texto = JSON.stringify(dados);
+        // Encontra imagens coladas (Base64) e substitui por um aviso leve
+        texto = texto.replace(/data:image\/[a-zA-Z0-9+;/=]+/gi, "IMAGEM_REMOVIDA_POR_EXCESSO_DE_PESO");
+        return JSON.parse(texto);
+    }
+
+    // 3. Importação à prova de falhas
     window.importData = function(event) {
         var file = event.target.files[0];
         if (!file) return;
@@ -9957,40 +9964,60 @@ setTimeout(function() {
             var raw = JSON.parse(e.target.result);
             var importedData = raw.userData ? raw.userData : raw;
             
-            delete importedData._hideBase; // Garante que tudo vai aparecer
-            importedData._updatedAt = Date.now(); // Carimba a hora
+            delete importedData._hideBase;
+            importedData._updatedAt = Date.now();
             
-            // Salva no celular instantaneamente
+            // Salva no celular com TUDO (suas imagens continuam locais)
             localStorage.setItem("cldf_v2", JSON.stringify(importedData));
             if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
             
-            // Se estiver logado, ENVIA E ESPERA A CONFIRMAÇÃO DA NUVEM
             if (typeof fbUserDocRef === 'function') {
                 var ref = fbUserDocRef();
                 if (ref) {
-                    alert("⏳ Enviando o backup para o Google. Por favor, aguarde o aviso de Sucesso e não feche a página...");
+                    alert("⏳ Aplicando dieta nos dados e enviando para o Google. Aguarde...");
                     
-                    ref.set({
-                        main: importedData,
-                        custom: raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                    var payloadLeve = {
+                        main: emagrecerDados(importedData),
+                        custom: emagrecerDados(raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
                         methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
                         _updatedAt: Date.now()
-                    }).then(function() {
-                        // Só executa essa linha quando o Google avisar que terminou de salvar
-                        alert("✅ SUCESSO! O Google confirmou o recebimento do backup. A página vai recarregar agora.");
+                    };
+
+                    ref.set(payloadLeve).then(function() {
+                        alert("✅ SUCESSO! Nuvem atualizada. A página vai recarregar.");
                         location.reload();
                     }).catch(function(erro) {
-                        alert("❌ Erro na internet ao enviar: " + erro.message);
+                        alert("❌ Erro: " + erro.message);
                     });
-                    
-                    return; // Faz o código PARAR aqui para não recarregar antes da hora
+                    return; 
                 }
             }
-            
-            // Se estiver sem internet ou deslogado, recarrega direto
             location.reload();
         };
         reader.readAsText(file);
+    };
+
+    // 4. Salvamento diário com dieta
+    window.lset = function(d) {
+        try {
+            d._updatedAt = Date.now();
+            delete d._hideBase; 
+            localStorage.setItem("cldf_v2", JSON.stringify(d)); 
+            
+            if (typeof fbUserDocRef === 'function') {
+                var ref = fbUserDocRef();
+                if (ref) {
+                    ref.set({
+                        main: emagrecerDados(d),
+                        custom: emagrecerDados(JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]")),
+                        methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
+                        _updatedAt: Date.now()
+                    }, {merge: true});
+                }
+            }
+            if (typeof markSaved === "function") markSaved();
+            return true;
+        } catch (ex) { return false; }
     };
 })();
 </script>
