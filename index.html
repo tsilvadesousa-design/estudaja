@@ -9226,177 +9226,187 @@ document.addEventListener("DOMContentLoaded", function() {
 
 <script>
 // =========================================================================
-// PACOTE DEFINITIVO DE BLINDAGEM DO ESTUDAJÁ
+// PACOTE DEFINITIVO ESTUDAJA - AUTO-HEALING
 // =========================================================================
 
-// 1. Corrige o vazamento visual da aba Gerenciar
-var s = document.createElement("style");
-s.innerHTML = ".glbl:contains('Aguardando na Fila') { display: none !important; }";
-document.head.appendChild(s);
+(function() {
+    // 1. Limpeza Visual de vazamentos da UI
+    var s = document.createElement("style");
+    s.innerHTML = ".glbl:contains('Aguardando na Fila') { display: none !important; }";
+    document.head.appendChild(s);
 
-// 2. Sistema Blindado de Leitura de Matérias (Junta originais + criadas)
-window.getCustomEntries = function() {
+    // 2. Mata matérias "Fantasmas" e usa só as suas importadas
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var customFromLocal = [];
-    try { customFromLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e) {}
-    var merged = (store.custom_entries || []).concat(customFromLocal);
-    var unique = [], ids = new Set();
-    merged.forEach(function(item) {
-        if (!ids.has(item.id)) { ids.add(item.id); unique.push(item); }
-    });
-    return unique;
-};
-
-window.getAllEntries = function() {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var custom = window.getCustomEntries();
-    if (store._hideBase) return custom;
-
-    var base = (typeof ENTRIES !== "undefined" ? ENTRIES : []).map(function(e) {
-        var ud = store["e" + e.id + "_r0"] || {};
-        if (ud._deleted) return null;
-        var hasOverride = "_disc" in ud || "_topico" in ud || "_assunto" in ud || "_sub" in ud;
-        if (hasOverride) {
-            var clone = {};
-            for (var k in e) clone[k] = e[k];
-            if ("_disc"    in ud) clone.disc    = ud._disc;
-            if ("_topico"  in ud) clone.topico  = ud._topico;
-            if ("_assunto" in ud) clone.assunto = ud._assunto;
-            if ("_sub"     in ud) clone.sub     = ud._sub;
-            return clone;
-        }
-        return e;
-    }).filter(function(e) { return e !== null; });
-
-    return base.concat(custom);
-};
-
-window.rebuildEntryMap = function() {
-  window.entryMap = {};
-  window.getAllEntries().forEach(function(e) { window.entryMap[e.id] = e; });
-};
-
-// 3. Agenda e Replano ignorando matérias pausadas
-window.rebuildAgMap = function() {
-  if (typeof agMap === 'undefined') window.agMap = {};
-  for (var k in agMap) delete agMap[k];
-  var ud = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  var cicloCfg = ud._cicloConfig || {};
-  var discSettings = cicloCfg.disciplinas || {};
-  
-  window.getAllEntries().forEach(function(e) {
-    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
-    if (statusDisc === "pausada") return;
-    function push(ds, tipo, rn) {
-      if (!ds) return;
-      if (!agMap[ds]) agMap[ds] = [];
-      agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
-    }
-    var u0 = ud["e"+e.id+"_r0"] || {};
-    var novoDate = (u0 && u0.date) ? u0.date : e.date;
-    push(novoDate, "NOVO", 0);
-    (e.revs || []).forEach(function(r) {
-      var ur = ud["e"+e.id+"_r"+r.num] || {};
-      var revDate = (ur && ur.date) ? ur.date : r.date;
-      push(revDate, "REV", r.num);
-    });
-  });
-};
-
-window.applyReplan = function() {
-  var start = document.getElementById("replan-start").value;
-  var daily = parseInt(document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1") || 1;
-  var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
-  if (!start) { alert("⚠️ Selecione uma data de início"); return; }
-  
-  try {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var result = typeof buildSmartSchedule === 'function' ? buildSmartSchedule(start, daily, "", true, respectManual, store._cicloConfig || {}) : null;
-    if (!result || !result.pendingNew || !result.pendingNew.length) { 
-        alert("⚠️ Nenhum tópico novo pra reagendar"); return; 
-    }
-    Object.keys(result.schedule).forEach(function(eid) {
-      var s = result.schedule[eid];
-      var ud0 = store["e" + eid + "_r0"] || {};
-      ud0.date = s.studyDate;
-      delete ud0._manualDate;
-      store["e" + eid + "_r0"] = ud0;
-      Object.keys(s.revDates).forEach(function(rnum) {
-        var udr = store["e" + eid + "_r" + rnum] || {};
-        if ((udr.status || "pend") !== "ok") { udr.date = s.revDates[rnum]; store["e" + eid + "_r" + rnum] = udr; }
-      });
-    });
-    window.lset(store);
-    window.rebuildEntryMap(); window.rebuildAgMap();
-    if (typeof renderAgenda === 'function') renderAgenda();
-    alert("✅ Ciclo replanejado!");
-  } catch(ex) { alert("Erro: " + ex.message); }
-};
-
-// 4. Salvar na nuvem forçando a aceitação do seu PC como a Versão Mestra
-window.lset = function(d) {
-  try {
-    d._updatedAt = Date.now() + 10000;
-    localStorage.setItem("cldf_v2", JSON.stringify(d));
-    if (typeof markSaved === "function") markSaved();
-    if (typeof cloudPush === "function") cloudPush(false);
-    if (typeof schedulePushToFirestore === "function") schedulePushToFirestore();
-    return true;
-  } catch (ex) { return false; }
-};
-
-window.pushToFirestore = function() {
-  var ref = typeof fbUserDocRef === 'function' ? fbUserDocRef() : null;
-  if (!ref) return;
-  var payload = {
-    main: JSON.parse(localStorage.getItem("cldf_v2") || "{}"),
-    custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
-    methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]"),
-    _updatedAt: Date.now() + 10000 
-  };
-  window._fbSavingRemote = true;
-  ref.set(payload).then(function() {
-    var el = document.getElementById("fb-sync-status");
-    if(el) el.textContent = "☁️ Sincronizado";
-  }).catch(function(ex) { window._fbSavingRemote = false; });
-};
-
-// 5. Preenchimento Automático dos Menus de Disciplinas
-window.atualizarMenus = function() {
-    var navDt = document.getElementById("nav-dt"); 
-    if (navDt && typeof TODAY !== 'undefined' && typeof fmtD !== 'undefined') navDt.textContent = fmtD(TODAY) + " \u00b7 " + fmtWd(TODAY);
-
-    var disciplinas = new Set();
-    window.getAllEntries().forEach(function(e) { if (e && e.disc) disciplinas.add(e.disc); });
-    var discArray = Array.from(disciplinas).sort();
+    var fantasmas = ["Língua Portuguesa", "Direito Constitucional", "Direito Administrativo", "Processo Legislativo", "Licitações e Contratos", "Raciocínio Lógico", "Informática e Dados", "Administração Geral", "Administração Pública", "Administração Orçamentária e Financeira", "RIDE"];
     
-    ["gf-disc", "bulk-disc", "bulkobs-disc", "rename-disc-from", "delete-disc-select", "res-new-disc", "res-disc-f"].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        var old = el.value;
-        var padrao = el.options[0] ? el.options[0].textContent : "-- selecionar --";
-        if (el.options.length !== discArray.length + 1) {
-            el.innerHTML = '<option value="">' + padrao + '</option>';
-            discArray.forEach(function(d) {
-                var opt = document.createElement("option");
-                opt.value = d; opt.textContent = d;
-                el.appendChild(opt);
-            });
-            if (old && discArray.indexOf(old) > -1) el.value = old;
-        }
-    });
-};
+    if (typeof ENTRIES !== "undefined") {
+        ENTRIES.forEach(function(e) {
+            if (fantasmas.includes(e.disc)) {
+                var k = "e" + e.id + "_r0";
+                if (!store[k]) store[k] = {};
+                store[k]._deleted = true; 
+            }
+        });
+        store._hideBase = true;
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+    }
 
-// Inicia TUDO com segurança 1 segundo após a página abrir
-setTimeout(function() {
-    window.rebuildEntryMap();
-    window.rebuildAgMap();
-    window.atualizarMenus();
-    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
-    if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
-    if (typeof renderAgenda === 'function') renderAgenda();
-}, 1000);
-setInterval(window.atualizarMenus, 2000);
+    // 3. Sistema Blindado de Leitura (Garante o Carregamento dos Painéis)
+    window.getCustomEntries = function() {
+        var st = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var customFromLocal = [];
+        try { customFromLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e) {}
+        var merged = (st.custom_entries || []).concat(customFromLocal);
+        var unique = [], ids = new Set();
+        merged.forEach(function(item) {
+            if (!ids.has(item.id)) { ids.add(item.id); unique.push(item); }
+        });
+        return unique;
+    };
+
+    window.getAllEntries = function() {
+        var st = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var custom = window.getCustomEntries();
+        if (st._hideBase) return custom;
+
+        var base = (typeof ENTRIES !== "undefined" ? ENTRIES : []).map(function(e) {
+            var ud = st["e" + e.id + "_r0"] || {};
+            if (ud._deleted) return null;
+            var hasOverride = "_disc" in ud || "_topico" in ud || "_assunto" in ud || "_sub" in ud;
+            if (hasOverride) {
+                var clone = {};
+                for (var k in e) clone[k] = e[k];
+                if ("_disc"    in ud) clone.disc    = ud._disc;
+                if ("_topico"  in ud) clone.topico  = ud._topico;
+                if ("_assunto" in ud) clone.assunto = ud._assunto;
+                if ("_sub"     in ud) clone.sub     = ud._sub;
+                return clone;
+            }
+            return e;
+        }).filter(function(e) { return e !== null; });
+
+        return base.concat(custom);
+    };
+
+    window.rebuildEntryMap = function() {
+        window.entryMap = {};
+        window.getAllEntries().forEach(function(e) { window.entryMap[e.id] = e; });
+    };
+
+    window.rebuildAgMap = function() {
+        if (typeof agMap === 'undefined') window.agMap = {};
+        for (var k in agMap) delete agMap[k];
+        var ud = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = ud._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        
+        window.getAllEntries().forEach(function(e) {
+            var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+            if (statusDisc === "pausada") return;
+            function push(ds, tipo, rn) {
+                if (!ds) return;
+                if (!agMap[ds]) agMap[ds] = [];
+                agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+            }
+            var u0 = ud["e"+e.id+"_r0"] || {};
+            var novoDate = (u0 && u0.date) ? u0.date : e.date;
+            push(novoDate, "NOVO", 0);
+            (e.revs || []).forEach(function(r) {
+                var ur = ud["e"+e.id+"_r"+r.num] || {};
+                var revDate = (ur && ur.date) ? ur.date : r.date;
+                push(revDate, "REV", r.num);
+            });
+        });
+    };
+
+    window.applyReplan = function() {
+        var start = document.getElementById("replan-start").value;
+        var daily = parseInt(document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1") || 1;
+        var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+        if (!start) { alert("⚠️ Selecione uma data de início"); return; }
+        
+        try {
+            var st = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var result = typeof buildSmartSchedule === 'function' ? buildSmartSchedule(start, daily, "", true, respectManual, st._cicloConfig || {}) : null;
+            if (!result || !result.pendingNew || !result.pendingNew.length) { 
+                alert("⚠️ Nenhum tópico novo pra reagendar"); return; 
+            }
+            Object.keys(result.schedule).forEach(function(eid) {
+                var s = result.schedule[eid];
+                var ud0 = st["e" + eid + "_r0"] || {};
+                ud0.date = s.studyDate;
+                delete ud0._manualDate;
+                st["e" + eid + "_r0"] = ud0;
+                Object.keys(s.revDates).forEach(function(rnum) {
+                    var udr = st["e" + eid + "_r" + rnum] || {};
+                    if ((udr.status || "pend") !== "ok") { udr.date = s.revDates[rnum]; st["e" + eid + "_r" + rnum] = udr; }
+                });
+            });
+            window.lset(st);
+            window.rebuildEntryMap(); 
+            window.rebuildAgMap();
+            if (typeof renderAgenda === 'function') renderAgenda();
+            alert("✅ Ciclo replanejado com sucesso!");
+        } catch(ex) { alert("Erro: " + ex.message); }
+    };
+
+    window.lset = function(d) {
+        try {
+            d._updatedAt = Date.now() + 10000; // Impede que o celular velho reescreva
+            localStorage.setItem("cldf_v2", JSON.stringify(d));
+            if (typeof markSaved === "function") markSaved();
+            if (typeof cloudPush === "function") cloudPush(false);
+            if (typeof schedulePushToFirestore === "function") schedulePushToFirestore();
+            return true;
+        } catch (ex) { return false; }
+    };
+
+    // 4. Injeta as disciplinas nos menus (Resolve o "-- selecionar --")
+    window.atualizarMenus = function() {
+        var navDt = document.getElementById("nav-dt"); 
+        if (navDt && typeof TODAY !== 'undefined' && typeof fmtD !== 'undefined') {
+            navDt.textContent = fmtD(TODAY) + " \u00b7 " + fmtWd(TODAY);
+        }
+
+        var disciplinas = new Set();
+        window.getAllEntries().forEach(function(e) { if (e && e.disc) disciplinas.add(e.disc); });
+        var discArray = Array.from(disciplinas).sort();
+        
+        ["gf-disc", "bulk-disc", "bulkobs-disc", "rename-disc-from", "delete-disc-select", "res-new-disc", "res-disc-f", "ag-disc-f"].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var old = el.value;
+            var padrao = id === "ag-disc-f" ? "Todas" : (id === "bulk-disc" || id === "res-disc-f" ? "Todas as disciplinas" : "-- selecionar --");
+            
+            if (el.options.length !== discArray.length + 1) {
+                el.innerHTML = '<option value="">' + padrao + '</option>';
+                discArray.forEach(function(d) {
+                    var opt = document.createElement("option");
+                    opt.value = d; opt.textContent = d;
+                    el.appendChild(opt);
+                });
+                if (old && discArray.indexOf(old) > -1) el.value = old;
+            }
+        });
+    };
+
+    // 5. Acordar as funções a cada 0.5 segundos para garantir que desenhe a tela
+    var checkAndBoot = setInterval(function() {
+        if (typeof window.getAllEntries === 'function') {
+            window.rebuildEntryMap();
+            window.rebuildAgMap();
+            window.atualizarMenus();
+            if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+            if (typeof renderDisciplinasInteligente === 'function') renderDisciplinasInteligente();
+            if (typeof renderAgenda === 'function') renderAgenda();
+            clearInterval(checkAndBoot);
+        }
+    }, 500);
+
+    // Mantém os menus sempre atualizados contra bugs
+    setInterval(window.atualizarMenus, 2000);
+
+})();
 </script>
 
 </body>
