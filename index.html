@@ -9223,6 +9223,234 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 </script>
+<script>
+// =========================================================================
+// RESGATE DE DADOS E FIX DEFINITIVO (Agenda, Visão Geral e Backup)
+// =========================================================================
+
+// 1. Resgata os tópicos personalizados de qualquer lugar que tenham sido salvos
+window.getCustomEntries = function() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var customFromStore = store.custom_entries || [];
+    var customFromLocal = [];
+    try { customFromLocal = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"); } catch(e) {}
+    
+    // Une os dois pra garantir que nada foi perdido
+    var merged = customFromStore.concat(customFromLocal);
+    var unique = [];
+    var ids = new Set();
+    merged.forEach(function(item) {
+        if (!ids.has(item.id)) { ids.add(item.id); unique.push(item); }
+    });
+    return unique;
+};
+
+// 2. Garante que os tópicos do Edital apareçam
+window.getAllEntries = function() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var custom = window.getCustomEntries();
+    
+    // Desliga a trava de "Apagar Tudo" se o backup foi perdido
+    var hideBase = store._hideBase === true;
+    if (hideBase && custom.length === 0) {
+        hideBase = false; 
+        store._hideBase = false;
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+    }
+
+    if (hideBase) return custom;
+
+    var base = (typeof ENTRIES !== "undefined" ? ENTRIES : []).map(function(e) {
+        var ud = store["e" + e.id + "_r0"] || {};
+        if (ud._deleted) return null;
+        var hasOverride = "_disc" in ud || "_topico" in ud || "_assunto" in ud || "_sub" in ud;
+        if (hasOverride) {
+            var clone = {};
+            for (var k in e) clone[k] = e[k];
+            if ("_disc"    in ud) clone.disc    = ud._disc;
+            if ("_topico"  in ud) clone.topico  = ud._topico;
+            if ("_assunto" in ud) clone.assunto = ud._assunto;
+            if ("_sub"     in ud) clone.sub     = ud._sub;
+            return clone;
+        }
+        return e;
+    }).filter(function(e) { return e !== null; });
+
+    return base.concat(custom);
+};
+
+// 3. Renderiza a Visão Geral
+window.renderVisaoGeral = function() {
+    var container = document.getElementById("painel-visao-geral");
+    if (!container) return;
+
+    try {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
+        var simultaneas = Number(cicloCfg.numSimult) || 4;
+        
+        var allEntries = window.getAllEntries();
+        var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
+        var htmlMetas = "";
+        
+        var discNames = Object.keys(discSettings);
+        discNames.forEach(function(dName) {
+            var cfg = discSettings[dName];
+            if (cfg.status === "pausada") {
+                pausadas++;
+            } else {
+                ativas++;
+                var carga = Number(cfg.cargaHoraria) || 3;
+                somaCargaAtivas += carga;
+                var prazoDias = Number(cfg.prazoDiasRestantes) || 30;
+                var semanas = prazoDias / 7 || 1;
+
+                var pendentes = allEntries.filter(function(e) {
+                    var ud = store["e"+e.id+"_r0"] || {};
+                    var stat = ud.status || (e.ok === "✅" ? "ok" : "pend");
+                    return e.disc === dName && stat !== "ok";
+                }).length;
+
+                var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
+                var statusViabilidade = "✅ Viável";
+                var corViab = "var(--green)";
+
+                if (pendentes === 0) {
+                    statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
+                } else if (horasNecessariasPorSem > carga * 1.5) {
+                    statusViabilidade = "❌ Incompatível (Aumente o prazo)"; corViab = "var(--red)";
+                } else if (horasNecessariasPorSem > carga) {
+                    statusViabilidade = "⚠️ Apertada"; corViab = "orange";
+                }
+
+                htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
+                    '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
+                    'Meta: <b>'+prazoDias+' dias</b> | Carga: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
+                    '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
+                '</div>';
+            }
+        });
+
+        var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
+        var htmlPainel = '' +
+            '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span>' +
+                '</div>' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span>' +
+                '</div>' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span>' +
+                '</div>' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span>' +
+                '</div>' +
+            '</div>' +
+            '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas</h4>' +
+            (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina configurada ou ativa ainda.</span>");
+            
+        container.innerHTML = htmlPainel;
+    } catch(e) {
+        container.innerHTML = "<span style='color:var(--red)'>Erro ao carregar visão geral: " + e.message + "</span>";
+    }
+};
+
+// 4. Renderiza Disciplinas e ativa salvamento
+window.salvarConfigDisciplina = function(dName, dNameId) {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    if (!store._cicloConfig) store._cicloConfig = {};
+    if (!store._cicloConfig.disciplinas) store._cicloConfig.disciplinas = {};
+
+    store._cicloConfig.disciplinas[dName] = {
+        status: document.getElementById("cfg-st-" + dNameId).value,
+        prioridade: Number(document.getElementById("cfg-pr-" + dNameId).value),
+        frequenciaDesejada: Number(document.getElementById("cfg-fq-" + dNameId).value),
+        cargaHoraria: Number(document.getElementById("cfg-cg-" + dNameId).value),
+        prazoDiasRestantes: Number(document.getElementById("cfg-pz-" + dNameId).value)
+    };
+
+    // Salva local e sobe pra nuvem imediatamente
+    store._updatedAt = Date.now();
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    window.renderDisciplinasInteligente(); 
+    window.renderVisaoGeral();
+    if (typeof window.reAll === "function") window.reAll();
+    if (typeof window.pushToFirestore === "function") window.pushToFirestore();
+};
+
+window.renderDisciplinasInteligente = function() {
+    var container = document.getElementById("lista-disciplinas-inteligente");
+    if (!container) return; 
+
+    try {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = window.getAllEntries();
+        
+        var disciplinasUnicas = [];
+        allEntries.forEach(function(e) {
+            if (e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
+        });
+
+        if (disciplinasUnicas.length === 0) {
+            container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina cadastrada. Tente importar novamente.</div>';
+            return;
+        }
+
+        var html = "";
+        disciplinasUnicas.forEach(function(dName) {
+            var cfg = discSettings[dName] || {};
+            var status = cfg.status || "ativa";
+            var prioridade = cfg.prioridade || 3;
+            var frequencia = cfg.frequenciaDesejada || 1;
+            var prazo = cfg.prazoDiasRestantes || 30;
+            var carga = cfg.cargaHoraria || 3; 
+            var isPausada = (status !== "ativa");
+            var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
+
+            html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
+                    '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
+                        '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
+                        '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
+                    '</div>' +
+                    '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
+                        '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
+                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                        '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(&quot;'+dName+'&quot;, &quot;'+dNameId+'&quot;)" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '</div>' +
+                '</div>';
+        });
+        
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = '<div style="padding:1rem; color:var(--red);">Erro ao carregar disciplinas: '+e.message+'</div>';
+    }
+};
+
+// 5. Acionador Automático: Garante que os painéis sempre carreguem
+setInterval(function() {
+    var page = document.getElementById("page-gerenciar");
+    var container = document.getElementById("painel-visao-geral");
+    if (page && page.classList.contains("active") && container && container.innerHTML.indexOf("Carregando") > -1) {
+        window.renderDisciplinasInteligente();
+        window.renderVisaoGeral();
+    }
+}, 800);
+
+setTimeout(function() {
+    if (typeof window.rebuildEntryMap === 'function') window.rebuildEntryMap();
+    window.renderDisciplinasInteligente();
+    window.renderVisaoGeral();
+    if (typeof window.reAll === 'function') window.reAll();
+}, 500);
+
+</script>
 
 </body>
 </html>
