@@ -9223,6 +9223,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 </script>
+
 <script>
 // =========================================================================
 // RESGATE DE DADOS E FIX DEFINITIVO (Agenda, Visão Geral e Backup)
@@ -9450,6 +9451,68 @@ setTimeout(function() {
     if (typeof window.reAll === 'function') window.reAll();
 }, 500);
 
+</script>
+
+<script>
+// =========================================================================
+// CORREÇÃO DOS MENUS SUSPENSOS DE DISCIPLINAS (Aba Gerenciar)
+// =========================================================================
+window.atualizarMenusGerenciar = function() {
+    // 1. Coleta todas as disciplinas do seu sistema
+    var todasEntradas = typeof window.getAllEntries === 'function' ? window.getAllEntries() : [];
+    var disciplinas = [];
+    
+    todasEntradas.forEach(function(item) {
+        if (item && item.disc && disciplinas.indexOf(item.disc) === -1) {
+            disciplinas.push(item.disc);
+        }
+    });
+    disciplinas.sort(); // Organiza em ordem alfabética para facilitar a busca
+
+    // 2. Mapeia todos os campos da Aba Gerenciar que precisam das disciplinas
+    var campos = [
+        { id: "gf-disc", padrao: "-- selecionar --" },
+        { id: "bulk-disc", padrao: "Todas as disciplinas" },
+        { id: "bulkobs-disc", padrao: "-- selecionar --" },
+        { id: "rename-disc-from", padrao: "-- selecionar --" },
+        { id: "delete-disc-select", padrao: "-- selecionar --" }
+    ];
+
+    // 3. Preenche cada um deles com as opções reais do seu edital
+    campos.forEach(function(campo) {
+        var elemento = document.getElementById(campo.id);
+        if (!elemento) return;
+        
+        var valorAntigo = elemento.value; // Salva o que você já tinha selecionado
+        elemento.innerHTML = '<option value="">' + campo.padrao + '</option>';
+        
+        disciplinas.forEach(function(disc) {
+            var opcao = document.createElement("option");
+            opcao.value = disc;
+            opcao.textContent = disc;
+            elemento.appendChild(opcao);
+        });
+        
+        // Tenta restaurar a seleção se houver
+        if (valorAntigo && disciplinas.indexOf(valorAntigo) !== -1) {
+            elemento.value = valorAntigo;
+        }
+    });
+};
+
+// Força o preenchimento imediatamente ao carregar a página
+setTimeout(window.atualizarMenusGerenciar, 800);
+
+// Garante que os menus se atualizem sozinhos sempre que você clicar na aba "Gerenciar"
+var _oldShowPageMenus = window.showPage;
+if (typeof _oldShowPageMenus === 'function') {
+    window.showPage = function(id, btn) {
+        _oldShowPageMenus(id, btn); // Comportamento normal de trocar de tela
+        if (id === "gerenciar") {
+            window.atualizarMenusGerenciar();
+        }
+    };
+}
 </script>
 
 </body>
