@@ -1419,7 +1419,7 @@ select option{background:var(--bg3)}
     </div>
   </details>
 
- <!-- MÓDULO 1: CICLO DE ESTUDOS -->
+<!-- MÓDULO 1: CICLO DE ESTUDOS -->
   <details class="modulo-inteligente">
     <summary>📊 1. Regras do Replano Inteligente</summary>
     <div class="modulo-content">
@@ -1427,11 +1427,11 @@ select option{background:var(--bg3)}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
           <div class="grow">
             <div class="glbl">Horas Disponíveis por Semana (Sua rotina)</div>
-            <input class="ginp" id="replan-horas-disp" type="number" min="1" value="20" placeholder="Ex: 20 horas">
+            <input class="ginp" id="replan-horas-disp" type="number" min="1" value="20">
           </div>
           <div class="grow">
             <div class="glbl">Meta para fechar o Edital (em Dias)</div>
-            <input class="ginp" id="replan-meta-dias" type="number" min="1" value="60" placeholder="Ex: 60">
+            <input class="ginp" id="replan-meta-dias" type="number" min="1" value="60">
           </div>
         </div>
         <hr style="border:0;border-top:1px solid var(--bd);margin:0.5rem 0">
@@ -1440,7 +1440,8 @@ select option{background:var(--bg3)}
           <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
         </div>
         <div style="margin-top: 1rem; display:flex; gap:0.5rem;">
-          <button class="btn-p" style="flex:1" onclick="applyReplan()">&#10003; Gerar Ciclo Automático</button>
+          <!-- AQUI ESTÁ O NOVO COMANDO BLINDADO -->
+          <button class="btn-p" style="flex:1" onclick="gerarPlanoIA()">&#10003; Gerar Ciclo Automático</button>
         </div>
       </div>
     </div>
@@ -1453,17 +1454,10 @@ select option{background:var(--bg3)}
       <p style="font-size:0.8rem; color:var(--ink2); margin-bottom:1rem;">
         Defina os pesos de cada disciplina ou <b>oculte</b> as matérias que não participarão deste ciclo.
       </p>
-      
-      <!-- Este contêiner será preenchido dinamicamente pelo JavaScript com a lista de disciplinas -->
-      <div id="lista-disciplinas-inteligente" style="display:flex; flex-direction:column; gap:1rem;">
-        <!-- Exemplo visual de como ficarão as matérias injetadas pelo JS -->
-        <div style="padding:1rem; border:1px dashed var(--bd); border-radius:6px; text-align:center; color:var(--ink3); font-size:0.85rem;">
-          As disciplinas cadastradas aparecerão aqui para configuração.
-        </div>
-      </div>
+      <!-- AQUI ESTÁ A NOVA LISTA BLINDADA -->
+      <div id="lista-disciplinas-ia" style="display:flex; flex-direction:column; gap:1rem;"></div>
     </div>
   </details>
-
   <!-- MÓDULO 3: CONTEÚDOS E TÓPICOS -->
   <details class="modulo-inteligente">
     <summary>📝 3. Conteúdos (Adicionar e Importar)</summary>
