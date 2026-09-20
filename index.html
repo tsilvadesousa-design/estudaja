@@ -130,9 +130,7 @@ function renderDisciplinasInteligente() {
         var cfg = discSettings[dName] || {};
         var status = cfg.status || "ativa";
         var prioridade = cfg.prioridade || 3;
-        var frequencia = cfg.frequenciaDesejada || 1;
-        var prazo = cfg.prazoDiasRestantes || 30;
-        var carga = cfg.cargaHoraria || 3; // Nova propriedade
+        
         var isPausada = (status !== "ativa");
         var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
 
@@ -143,10 +141,7 @@ function renderDisciplinasInteligente() {
                 '</div>' +
                 '<div style="display:flex; flex-wrap:wrap; gap: 0.5rem;">' +
                     '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Freq (Sessão)</label><input type="number" id="cfg-fq-'+dNameId+'" class="ginp" min="1" value="'+frequencia+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Carga (h/sem)</label><input type="number" id="cfg-cg-'+dNameId+'" class="ginp" min="1" value="'+carga+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
-                    '<div style="flex:1; min-width:80px;"><label style="font-size:0.7rem;">Prazo (Dias)</label><input type="number" id="cfg-pz-'+dNameId+'" class="ginp" min="1" value="'+prazo+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
+                    '<div style="flex:1; min-width:100px;"><label style="font-size:0.7rem;">Prioridade</label><input type="number" id="cfg-pr-'+dNameId+'" class="ginp" min="1" max="5" value="'+prioridade+'" style="padding:0.3rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'></div>' +
                 '</div>' +
             '</div>';
     });
@@ -159,17 +154,15 @@ function salvarConfigDisciplina(dName, dNameId) {
     if (!store._cicloConfig) store._cicloConfig = {};
     if (!store._cicloConfig.disciplinas) store._cicloConfig.disciplinas = {};
 
+    // Agora o sistema salva APENAS o Status e a Prioridade de cada matéria
     store._cicloConfig.disciplinas[dName] = {
         status: document.getElementById("cfg-st-" + dNameId).value,
-        prioridade: Number(document.getElementById("cfg-pr-" + dNameId).value),
-        frequenciaDesejada: Number(document.getElementById("cfg-fq-" + dNameId).value),
-        cargaHoraria: Number(document.getElementById("cfg-cg-" + dNameId).value),
-        prazoDiasRestantes: Number(document.getElementById("cfg-pz-" + dNameId).value)
+        prioridade: Number(document.getElementById("cfg-pr-" + dNameId).value)
     };
 
     lset(store); 
     renderDisciplinasInteligente(); 
-    renderVisaoGeral(); // Recalcula o painel dinamicamente
+    if (typeof renderVisaoGeral === 'function') renderVisaoGeral(); 
 }
 
 function salvarIntervalosRevisao() {
@@ -177,20 +170,25 @@ function salvarIntervalosRevisao() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     store._revIntervals = val;
     lset(store);
-    toast("\u2713 Intervalos salvos!");
+    if (typeof toast === 'function') toast("\u2713 Intervalos salvos!");
 }
 
 var oldInitGerenciar = window.initGerenciar;
 window.initGerenciar = function() {
     if (typeof oldInitGerenciar === 'function') { oldInitGerenciar(); }
-    // Carrega campos globais
+    
+    // Carrega campos globais novos
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     if (store._cicloConfig) {
-        if(document.getElementById("replan-horas-disp")) document.getElementById("replan-horas-disp").value = store._cicloConfig.horasDisponiveis || 20;
-        if(document.getElementById("replan-simult")) document.getElementById("replan-simult").value = store._cicloConfig.numSimult || 4;
+        if(document.getElementById("replan-horas-disp")) {
+            document.getElementById("replan-horas-disp").value = store._cicloConfig.horasDisponiveis || 20;
+        }
+        if(document.getElementById("replan-meta-dias")) {
+            document.getElementById("replan-meta-dias").value = store._cicloConfig.metaDias || 60;
+        }
     }
     renderDisciplinasInteligente();
-    renderVisaoGeral();
+    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
 };
 // =====================================================================
 </script>
@@ -1422,7 +1420,7 @@ select option{background:var(--bg3)}
     </div>
   </details>
 
-  <!-- MÓDULO 1: CICLO DE ESTUDOS -->
+ <!-- MÓDULO 1: CICLO DE ESTUDOS -->
   <details class="modulo-inteligente">
     <summary>📊 1. Regras do Replano Inteligente</summary>
     <div class="modulo-content">
@@ -1430,30 +1428,20 @@ select option{background:var(--bg3)}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
           <div class="grow">
             <div class="glbl">Horas Disponíveis por Semana (Sua rotina)</div>
-            <input class="ginp" id="replan-horas-disp" type="number" min="1" value="20" placeholder="Ex: 20 horas" onchange="salvarConfigGlobais()">
+            <input class="ginp" id="replan-horas-disp" type="number" min="1" value="20" placeholder="Ex: 20 horas">
           </div>
           <div class="grow">
-            <div class="glbl">Matérias Simultâneas no Ciclo</div>
-            <input class="ginp" id="replan-simult" type="number" min="1" value="4" onchange="salvarConfigGlobais()">
+            <div class="glbl">Meta para fechar o Edital (em Dias)</div>
+            <input class="ginp" id="replan-meta-dias" type="number" min="1" value="60" placeholder="Ex: 60">
           </div>
         </div>
         <hr style="border:0;border-top:1px solid var(--bd);margin:0.5rem 0">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
-          <div class="grow">
-            <div class="glbl">Data de Início da Distribuição</div>
-            <input class="ginp" id="replan-start" type="date">
-          </div>
-          <div class="grow">
-            <div class="glbl">Máx. Tópicos Novos por dia</div>
-            <input class="ginp" id="replan-daily" type="number" min="1" value="1" placeholder="Ex: 2">
-          </div>
-        </div>
         <div class="grow" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
           <input type="checkbox" id="replan-respect-manual" checked>
           <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
         </div>
         <div style="margin-top: 1rem; display:flex; gap:0.5rem;">
-          <button class="btn-p" style="flex:1" onclick="applyReplan()">&#10003; Aplicar Replano Inteligente</button>
+          <button class="btn-p" style="flex:1" onclick="applyReplan()">&#10003; Gerar Ciclo Automático</button>
         </div>
       </div>
     </div>
@@ -6321,27 +6309,81 @@ function previewReplan() {
 
 function applyReplan() {
   var start = document.getElementById("replan-start").value;
-  var dailyLimitStr = document.getElementById("replan-daily") ? document.getElementById("replan-daily").value : "1";
-  var daily = parseInt(dailyLimitStr);
-  if (isNaN(daily) || daily < 1) daily = 1;
+  var metaDiasStr = document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "60";
+  var metaDias = parseInt(metaDiasStr) || 60;
+  var horasSemanaStr = document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : "20";
+  var horasSemana = parseInt(horasSemanaStr) || 20;
   var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
-  
+
   if (!start) { toast("⚠️ Selecione uma data de início do plano"); return; }
-  
+
   try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
-    
-    // Chama o motor inteligente (a função que atualizamos na rodada passada)
+    cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+
+    var allEntries = getAllEntries();
+    var discData = {};
+    var activeDiscs = [];
+    var sumPriorities = 0;
+    var totalPending = 0;
+
+    // 1. LEVANTAMENTO: Mapeia matérias ativas e conta tópicos pendentes reais
+    allEntries.forEach(function(entry) {
+        if (entry.disc) {
+            var dName = entry.disc;
+            var cfg = cicloCfg.disciplinas[dName] || { status: "ativa", prioridade: 3 };
+            
+            if (cfg.status === "ativa" || cfg.status === "Ativa") {
+                if (!discData[dName]) {
+                    activeDiscs.push(dName);
+                    var p = parseInt(cfg.prioridade) || 3;
+                    sumPriorities += p;
+                    discData[dName] = { prio: p, pendingCount: 0 };
+                }
+                
+                var k0 = "e" + entry.id + "_r0";
+                var ud0 = store[k0] || {};
+                // Se o tópico ainda não tem status "ok" (não foi estudado)
+                if (ud0.status !== "ok") {
+                    discData[dName].pendingCount++;
+                    totalPending++;
+                }
+            }
+        }
+    });
+
+    // 2. RITMO MÍNIMO: Calcula o ritmo diário exato para bater a meta
+    var daily = Math.ceil(totalPending / metaDias);
+    if (isNaN(daily) || daily < 1) daily = 1;
+
+    // 3. INTELIGÊNCIA: Substitui os valores manuais pelos cálculos matemáticos proporcionais
+    activeDiscs.forEach(function(dName) {
+        var data = discData[dName];
+        var peso = data.prio / sumPriorities; // Calcula a fatia (peso) da matéria
+
+        if (!cicloCfg.disciplinas[dName]) cicloCfg.disciplinas[dName] = { status: "ativa", prioridade: data.prio };
+
+        // Injeta as horas e frequência baseadas EXCLUSIVAMENTE no peso da prioridade
+        cicloCfg.disciplinas[dName].cargaHoraria = Math.max(1, Math.round(horasSemana * peso));
+        cicloCfg.disciplinas[dName].frequenciaDesejada = Math.max(1, Math.ceil((daily * 7) * peso));
+    });
+
+    // Atualiza o banco com a matemática e salva as regras globais
+    cicloCfg.horasDisponiveis = horasSemana;
+    cicloCfg.metaDias = metaDias;
+    store._cicloConfig = cicloCfg;
+
+    // 4. ACIONA O MOTOR: O sistema antigo agora será guiado pelas variáveis da IA
     var result = buildSmartSchedule(start, daily, "", true, respectManual, cicloCfg);
     var sched = result.schedule;
-    
-    if (!result.pendingNew || !result.pendingNew.length) { 
-        toast("⚠️ Nenhum tópico novo pra reagendar (os demais são manuais ou a matéria está pausada)"); 
-        return; 
+
+    if (!result.pendingNew || !result.pendingNew.length) {
+        toast("⚠️ Nenhum tópico novo pra reagendar (os demais são manuais ou a matéria está pausada)");
+        return;
     }
-    
-    // Aplica as novas datas
+
+    // 5. Aplica as novas datas calculadas na Agenda
     Object.keys(sched).forEach(function(eid) {
       var s = sched[eid];
       var k0 = "e" + eid + "_r0";
@@ -6353,18 +6395,21 @@ function applyReplan() {
       Object.keys(s.revDates).forEach(function(rnum) {
         var kr = "e" + eid + "_r" + rnum;
         var udr = store[kr] || {};
-        if ((udr.status || "pend") !== "ok") { 
-            udr.date = s.revDates[rnum]; 
-            store[kr] = udr; 
+        if ((udr.status || "pend") !== "ok") {
+            udr.date = s.revDates[rnum];
+            store[kr] = udr;
         }
       });
     });
-    
-    // Salva e recarrega tudo
+
+    // Salva e atualiza a tela do aplicativo
     lset(store);
-    initAllMaps();
-    toast("✅ Ciclo replanejado com sucesso (Limite: " + daily + " por dia)!");
-    reAll();
+    if(typeof initAllMaps === 'function') initAllMaps();
+    
+    // Mostra o diagnóstico calculado para o usuário
+    toast("🎯 Plano Gerado! Faltam " + totalPending + " tópicos. Ritmo: " + daily + " por dia.");
+    
+    if(typeof reAll === 'function') reAll();
   } catch(ex) {
     alert("Erro ao replanejar: " + ex.message);
   }
