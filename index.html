@@ -148,7 +148,6 @@ function renderDisciplinasInteligente() {
     
     container.innerHTML = html;
 }
-
 function salvarConfigDisciplina(dName, dNameId) {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     if (!store._cicloConfig) store._cicloConfig = {};
