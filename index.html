@@ -6308,14 +6308,14 @@ function previewReplan() {
 }
 
 function applyReplan() {
-  var start = document.getElementById("replan-start").value;
+  // Pega a data de hoje automaticamente (sem precisar de caixa na tela)
+  var start = new Date().toISOString().split('T')[0]; 
+  
   var metaDiasStr = document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "60";
   var metaDias = parseInt(metaDiasStr) || 60;
   var horasSemanaStr = document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : "20";
   var horasSemana = parseInt(horasSemanaStr) || 20;
   var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
-
-  if (!start) { toast("⚠️ Selecione uma data de início do plano"); return; }
 
   try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
@@ -6328,7 +6328,7 @@ function applyReplan() {
     var sumPriorities = 0;
     var totalPending = 0;
 
-    // 1. LEVANTAMENTO: Mapeia matérias ativas e conta tópicos pendentes reais
+    // 1. LEVANTAMENTO
     allEntries.forEach(function(entry) {
         if (entry.disc) {
             var dName = entry.disc;
@@ -6344,7 +6344,6 @@ function applyReplan() {
                 
                 var k0 = "e" + entry.id + "_r0";
                 var ud0 = store[k0] || {};
-                // Se o tópico ainda não tem status "ok" (não foi estudado)
                 if (ud0.status !== "ok") {
                     discData[dName].pendingCount++;
                     totalPending++;
@@ -6353,37 +6352,35 @@ function applyReplan() {
         }
     });
 
-    // 2. RITMO MÍNIMO: Calcula o ritmo diário exato para bater a meta
-    var daily = Math.ceil(totalPending / metaDias);
+    // 2. RITMO MÍNIMO
+    var daily = Math.ceil(totalPending / (metaDias > 0 ? metaDias : 1));
     if (isNaN(daily) || daily < 1) daily = 1;
 
-    // 3. INTELIGÊNCIA: Substitui os valores manuais pelos cálculos matemáticos proporcionais
+    // 3. INTELIGÊNCIA MATEMÁTICA
     activeDiscs.forEach(function(dName) {
         var data = discData[dName];
-        var peso = data.prio / sumPriorities; // Calcula a fatia (peso) da matéria
+        var peso = sumPriorities > 0 ? (data.prio / sumPriorities) : 1; 
 
         if (!cicloCfg.disciplinas[dName]) cicloCfg.disciplinas[dName] = { status: "ativa", prioridade: data.prio };
 
-        // Injeta as horas e frequência baseadas EXCLUSIVAMENTE no peso da prioridade
         cicloCfg.disciplinas[dName].cargaHoraria = Math.max(1, Math.round(horasSemana * peso));
         cicloCfg.disciplinas[dName].frequenciaDesejada = Math.max(1, Math.ceil((daily * 7) * peso));
     });
 
-    // Atualiza o banco com a matemática e salva as regras globais
     cicloCfg.horasDisponiveis = horasSemana;
     cicloCfg.metaDias = metaDias;
     store._cicloConfig = cicloCfg;
 
-    // 4. ACIONA O MOTOR: O sistema antigo agora será guiado pelas variáveis da IA
+    // 4. ACIONA O MOTOR
     var result = buildSmartSchedule(start, daily, "", true, respectManual, cicloCfg);
     var sched = result.schedule;
 
     if (!result.pendingNew || !result.pendingNew.length) {
-        toast("⚠️ Nenhum tópico novo pra reagendar (os demais são manuais ou a matéria está pausada)");
+        if (typeof toast === 'function') toast("⚠️ Nenhum tópico novo pra reagendar");
         return;
     }
 
-    // 5. Aplica as novas datas calculadas na Agenda
+    // 5. APLICA AS DATAS
     Object.keys(sched).forEach(function(eid) {
       var s = sched[eid];
       var k0 = "e" + eid + "_r0";
@@ -6402,19 +6399,18 @@ function applyReplan() {
       });
     });
 
-    // Salva e atualiza a tela do aplicativo
     lset(store);
     if(typeof initAllMaps === 'function') initAllMaps();
     
-    // Mostra o diagnóstico calculado para o usuário
-    toast("🎯 Plano Gerado! Faltam " + totalPending + " tópicos. Ritmo: " + daily + " por dia.");
+    // Alerta de sucesso
+    if(typeof toast === 'function') toast("🎯 Plano Gerado! Faltam " + totalPending + " tópicos. Ritmo: " + daily + " por dia.");
+    else alert("🎯 Plano Gerado! Faltam " + totalPending + " tópicos. Ritmo: " + daily + " por dia.");
     
     if(typeof reAll === 'function') reAll();
   } catch(ex) {
     alert("Erro ao replanejar: " + ex.message);
   }
 }
-
 // ── BULK DATE ─────────────────────────────────────────────────
 function getBulkTargets() {
   var disc = document.getElementById("bulk-disc").value;
