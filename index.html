@@ -3101,38 +3101,106 @@ function closeDateEditor(eid) {
   if (_openDateEditorId === eid) _openDateEditorId = null;
 }
 
-function saveCicloDate(eid, newDate) {
+// ==========================================
+// 1. ALTERAÇÃO MANUAL DE DATAS (LÁPIS)
+// ==========================================
+window.saveCicloDate = function(eid, newDate) {
   if (!newDate) return;
   try {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var k0 = "e" + eid + "_r0";
     var ud0 = store[k0] || {};
     ud0.date = newDate;
-    // Marca essa data como escolhida manualmente pelo usuário — o
-    // Redefinir Datas / Replanejar Plano Completo respeitam essa flag
-    // por padrão e não sobrescrevem, evitando perder a alteração numa
-    // recalculada futura do ciclo.
     ud0._manualDate = true;
     store[k0] = ud0;
-    var e = entryMap[eid] || getAllEntries().filter(function(x){return x.id==eid;})[0];
+
+    // Puxa as suas regras base (ex: 1, 7, 15, 30)
+    var rawIntervals = store._revIntervals || "1, 7, 15, 30";
+    var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+    if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+    var e = entryMap[eid] || getAllEntries().filter(function(x){return String(x.id)===String(eid);})[0];
     if (e) {
-      (e.revs||[]).forEach(function(r,idx) {
+      (e.revs||[]).forEach(function(r, idx) {
         var kr = "e" + eid + "_r" + r.num;
         var udr = store[kr] || {};
-        if ((udr.status||"pend") !== "ok") {
-          udr.date = addDays(newDate, REV_INTERVALS[idx]||(idx+1)*30);
+        
+        // Aplica o calendário base apenas às que ainda não foram feitas
+        if ((udr.status || "pend") !== "ok") {
+          var diasParaSomar = 30;
+          if (idx < absDays.length) {
+              diasParaSomar = absDays[idx];
+          } else {
+              var ult = absDays[absDays.length - 1];
+              var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+              var gap = ult - pen;
+              diasParaSomar = ult + ((gap > 0 ? gap : 30) * (idx - absDays.length + 1));
+          }
+          udr.date = addDays(newDate, diasParaSomar);
           store[kr] = udr;
         }
       });
     }
+    
     delete store._rolloverDate;
     lset(store);
     closeDateEditor(eid);
     initAllMaps();
-    toast("\u2713 Data alterada para " + fmtD(newDate) + "! (Preservada em recalculadas futuras)");
+    if (typeof toast === 'function') toast("✅ Data alterada! Base de revisões ajustada.");
     reAll();
-  } catch(ex) { alert("Erro: " + ex.message); }
-}
+  } catch(ex) { alert("Erro ao salvar data: " + ex.message); }
+};
+
+// ==========================================
+// 2. MOTOR DE REPETIÇÃO ESPAÇADA (PORCENTAGEM)
+// ==========================================
+window.adaptInterval = function(baseGap, pct, rn) {
+  // A regra de ouro: A Revisão de 24h (rn = 0) é sagrada. Sempre +1 dia.
+  if (rn === 0) return 1;
+
+  // Para R2, R3 em diante, o desempenho dita o espaçamento:
+  if (pct >= 0.90) return Math.round(baseGap * 2.0); // Sabe muito? Dobra a distância
+  if (pct >= 0.80) return Math.round(baseGap * 1.5); // Sabe bem? +50% de distância
+  if (pct >= 0.70) return baseGap;                   // Sabe o normal? Mantém o padrão (ex: 7 dias)
+  if (pct >= 0.50) return Math.max(1, Math.round(baseGap * 0.6)); // Sabe pouco? Antecipa
+  return Math.max(1, Math.round(baseGap * 0.3));     // Foi mal? Revisa quase imediatamente
+};
+
+// ==========================================
+// 3. AGENDAMENTO AUTOMÁTICO APÓS ESTUDO
+// ==========================================
+window.scheduleNextRev = function(eid, rn, completedDate, pct) {
+  var nextRn = rn + 1;
+  var e = entryMap[eid] || entryMap[String(eid)];
+  if (!e) return;
+  var totalRevs = (e.revs || []).length;
+  if (nextRn > totalRevs) return;
+
+  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+  var nextUd = store["e" + eid + "_r" + nextRn] || {};
+  if (nextUd.status === "ok") return;
+
+  var rawIntervals = store._revIntervals || "1, 7, 15, 30";
+  var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+  if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+  var gap = 1;
+  if (rn === 0) {
+      gap = absDays[0] || 1; 
+  } else {
+      var atual = absDays[rn - 1] || (rn * 30);
+      var proxima = absDays[rn] || ((rn + 1) * 30);
+      gap = proxima - atual;
+      if (gap <= 0) gap = 30;
+  }
+
+  // Passa o gap pelo Motor de Porcentagem
+  var adaptedGap = window.adaptInterval(gap, pct, rn);
+  nextUd.date = addDays(completedDate, adaptedGap);
+
+  store["e" + eid + "_r" + nextRn] = nextUd;
+  lset(store);
+};
 
 // ── EDITOR INLINE DE OBSERVAÇÃO (direto na tabela do Ciclo) ────
 // Mesmo padrão do editor de data acima: clicar no texto/placeholder
