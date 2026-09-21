@@ -44,7 +44,7 @@ function salvarConfigGlobais() {
     renderVisaoGeral();
 }
 
-function renderVisaoGeral() {
+window.renderVisaoGeral = function() {
     var container = document.getElementById("painel-visao-geral");
     if (!container) return;
 
@@ -52,8 +52,10 @@ function renderVisaoGeral() {
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
     
-    var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || 20;
-    var simultaneas = Number(cicloCfg.numSimult) || 4;
+    // 1. O painel agora puxa apenas as regras globais e ignora fantasmas individuais
+    var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || Number(document.getElementById("replan-horas-disp").value) || 20;
+    var metaDiasGlobal = Number(cicloCfg.metaDias) || Number(document.getElementById("replan-meta-dias").value) || 60;
+    var semanas = metaDiasGlobal / 7 || 1;
     
     var allEntries = getAllEntries();
     var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
@@ -66,10 +68,9 @@ function renderVisaoGeral() {
             pausadas++;
         } else {
             ativas++;
+            // Puxa a carga calculada pela IA
             var carga = Number(cfg.cargaHoraria) || 3;
             somaCargaAtivas += carga;
-            var prazoDias = Number(cfg.prazoDiasRestantes) || 30;
-            var semanas = prazoDias / 7 || 1;
 
             var pendentes = allEntries.filter(function(e) {
                 var ud = store["e"+e.id+"_r0"] || {};
@@ -77,7 +78,7 @@ function renderVisaoGeral() {
                 return e.disc === dName && stat !== "ok";
             }).length;
 
-            // Motor de Viabilidade: Estima 30 min por tópico pendente (0.5h)
+            // Motor de Viabilidade usa a meta global para todas as matérias
             var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
             var statusViabilidade = "✅ Viável";
             var corViab = "var(--green)";
@@ -85,14 +86,14 @@ function renderVisaoGeral() {
             if (pendentes === 0) {
                 statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
             } else if (horasNecessariasPorSem > carga * 1.5) {
-                statusViabilidade = "❌ Incompatível (Meta exige ~"+horasNecessariasPorSem.toFixed(1)+"h/sem. Aumente o prazo ou a carga)"; corViab = "var(--red)";
+                statusViabilidade = "❌ Incompatível (Meta exige ~"+horasNecessariasPorSem.toFixed(1)+"h/sem. Aumente o prazo global ou horas semanais)"; corViab = "var(--red)";
             } else if (horasNecessariasPorSem > carga) {
                 statusViabilidade = "⚠️ Apertada (Vai exigir dedicação extra)"; corViab = "orange";
             }
 
             htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
                 '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
-                'Meta: <b>'+prazoDias+' dias</b> | Carga separada: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
+                'Meta Unificada: <b>'+metaDiasGlobal+' dias</b> | Carga Alocada pela IA: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
                 '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
             '</div>';
         }
@@ -106,20 +107,17 @@ function renderVisaoGeral() {
                 '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span>' +
             '</div>' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Ocultadas</span>' +
+                '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Pausadas</span>' +
             '</div>' +
             '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:var(--ink);">'+simultaneas+'</h2><span style="font-size:0.75rem;">Simultâneas</span>' +
-            '</div>' +
-            '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
-                '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal</span>' +
+                '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal Calculada</span>' +
             '</div>' +
         '</div>' +
-        '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico das Metas (Matérias Ativas)</h4>' +
-        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina configurada ou ativa ainda. Expanda o módulo 'Disciplinas' para configurar.</span>");
+        '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico da IA</h4>' +
+        (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina activa configurada.</span>");
         
     container.innerHTML = htmlPainel;
-}
+};
 
 // =====================================================================
 // 1. RENDERIZAÇÃO BLINDADA DAS DISCIPLINAS
