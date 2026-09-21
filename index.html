@@ -9813,7 +9813,6 @@ setInterval(reconstruirMenusDisciplinas, 1000);
 document.querySelectorAll(".nbtn").forEach(function(btn) {
     btn.addEventListener("click", reconstruirMenusDisciplinas);
 });
-</script>
 
 <script>
 // =========================================================================
@@ -10417,6 +10416,333 @@ setTimeout(function() {
     📁 Conectar Drive
   </button>
 </div>
+
+<!-- ========================================================================= -->
+<!-- MASTER SCRIPT: CORRIGE DATAS, IA, DRIVE E VISÃO GERAL -->
+<!-- ========================================================================= -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+// Um atraso de segurança (800ms) para garantir que as matérias carregaram primeiro
+setTimeout(function() {
+    
+    // 1. VISÃO GERAL E DISCIPLINAS UNIFICADAS
+    window.renderVisaoGeral = function() {
+        var container = document.getElementById("painel-visao-geral");
+        if (!container) return;
+
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        
+        var horasDisponiveis = Number(cicloCfg.horasDisponiveis) || (document.getElementById("replan-horas-disp") ? Number(document.getElementById("replan-horas-disp").value) : 20);
+        var metaDiasGlobal = Number(cicloCfg.metaDias) || (document.getElementById("replan-meta-dias") ? Number(document.getElementById("replan-meta-dias").value) : 80);
+        var semanas = metaDiasGlobal / 7 || 1;
+        
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+        if(allEntries.length === 0) return; // Protecção contra apagão na tela
+
+        var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
+        var htmlMetas = "";
+        
+        var discNames = Object.keys(discSettings);
+        if(discNames.length === 0) {
+            var dUnicas = [];
+            allEntries.forEach(function(e) { if (e.disc && dUnicas.indexOf(e.disc) === -1) dUnicas.push(e.disc); });
+            dUnicas.forEach(function(d){ discSettings[d] = {status: "ativa", prioridade: 3}; });
+            discNames = dUnicas;
+        }
+
+        discNames.forEach(function(dName) {
+            var cfg = discSettings[dName];
+            if (cfg.status === "pausada") {
+                pausadas++;
+            } else {
+                ativas++;
+                var carga = Number(cfg.cargaHoraria) || 3;
+                somaCargaAtivas += carga;
+
+                var pendentes = allEntries.filter(function(e) {
+                    var ud = store["e"+e.id+"_r0"] || {};
+                    var stat = ud.status || (e.ok === "✅" ? "ok" : "pend");
+                    return e.disc === dName && stat !== "ok";
+                }).length;
+
+                var horasNecessariasPorSem = (pendentes * 0.5) / semanas;
+                var statusViabilidade = "✅ Viável";
+                var corViab = "var(--green)";
+
+                if (pendentes === 0) {
+                    statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
+                } else if (horasNecessariasPorSem > carga * 1.5) {
+                    statusViabilidade = "❌ Incompatível (Aumente o prazo ou horas)"; corViab = "var(--red)";
+                } else if (horasNecessariasPorSem > carga) {
+                    statusViabilidade = "⚠️ Apertada (Exigirá dedicação extra)"; corViab = "orange";
+                }
+
+                htmlMetas += '<div style="margin-bottom: 0.8rem; font-size: 0.85rem; border-bottom: 1px solid var(--bd); padding-bottom: 0.5rem;">' +
+                    '<b style="color:var(--ink);">'+dName+'</b> (Prioridade: '+cfg.prioridade+')<br>' +
+                    'Meta Unificada: <b>'+metaDiasGlobal+' dias</b> | Carga Alocada pela IA: <b>'+carga+'h/sem</b> | Pendentes: <b>'+pendentes+'</b><br>' +
+                    '<span style="color: '+corViab+'; font-weight: bold;">'+statusViabilidade+'</span>' +
+                '</div>';
+            }
+        });
+
+        var corCargaGlobal = (somaCargaAtivas > horasDisponiveis) ? "var(--red)" : "var(--green)";
+        var htmlPainel = '' +
+            '<div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:var(--brand);">'+ativas+'</h2><span style="font-size:0.75rem;">Matérias Ativas</span>' +
+                '</div>' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:var(--red);">'+pausadas+'</h2><span style="font-size:0.75rem;">Pausadas</span>' +
+                '</div>' +
+                '<div style="flex:1; background: var(--bg3); padding: 1rem; border-radius: 8px; text-align:center;">' +
+                    '<h2 style="margin:0; color:'+corCargaGlobal+';">'+somaCargaAtivas+'h / '+horasDisponiveis+'h</h2><span style="font-size:0.75rem;">Carga Semanal Calculada</span>' +
+                '</div>' +
+            '</div>' +
+            '<h4 style="margin:0 0 0.8rem 0;">Diagnóstico da IA</h4>' + htmlMetas;
+            
+        container.innerHTML = htmlPainel;
+    };
+
+    window.renderDisciplinasInteligente = function() {
+        var container = document.getElementById("lista-disciplinas-ia") || document.getElementById("lista-disciplinas-inteligente");
+        if (!container) return; 
+
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+        if(allEntries.length === 0) return;
+
+        var disciplinasUnicas = [];
+        allEntries.forEach(function(e) {
+            if (e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
+        });
+
+        var html = "";
+        disciplinasUnicas.forEach(function(dName) {
+            var cfg = discSettings[dName] || {};
+            var status = cfg.status || "ativa";
+            var prioridade = cfg.prioridade || 3;
+            var isPausada = (status !== "ativa");
+            var dNameId = dName.replace(/[^a-zA-Z0-9]/g, '_'); 
+
+            html += '<div style="border: 1px solid '+(isPausada ? 'var(--red)' : 'var(--bd)')+'; border-radius: 8px; padding: 1rem; opacity: '+(isPausada ? '0.5' : '1')+'; background: var(--bg2); margin-bottom:0.8rem;">' +
+                    '<div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem;">' +
+                        '<h3 style="margin:0; font-size:1rem;">'+dName+'</h3>' +
+                        '<span style="font-size:0.7rem; background: '+(isPausada ? 'var(--red)' : 'var(--brand)')+'; color:white; padding: 4px; border-radius: 4px;">'+(isPausada ? 'PAUSADA' : 'ATIVA')+'</span>' +
+                    '</div>' +
+                    '<div style="display:flex; flex-wrap:wrap; gap: 0.8rem;">' +
+                        '<div style="flex:1; min-width:120px;"><label style="font-size:0.7rem; font-weight:700; color:var(--ink2); margin-bottom:4px; display:block;">Status</label><select id="cfg-st-'+dNameId+'" class="ginp" style="padding:0.45rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')"><option value="ativa" '+(status === 'ativa' ? 'selected' : '')+'>Ativa</option><option value="pausada" '+(status === 'pausada' ? 'selected' : '')+'>Pausada</option></select></div>' +
+                        '<div style="flex:1; min-width:120px;"><label style="font-size:0.7rem; font-weight:700; color:var(--ink2); margin-bottom:4px; display:block;">Prioridade (Peso)</label><select id="cfg-pr-'+dNameId+'" class="ginp" style="padding:0.45rem;" onchange="salvarConfigDisciplina(\''+dName+'\', \''+dNameId+'\')" '+(isPausada ? 'disabled' : '')+'>' +
+                            '<option value="1" '+(prioridade==1?'selected':'')+'>1 (Baixa)</option>' +
+                            '<option value="2" '+(prioridade==2?'selected':'')+'>2 (Média)</option>' +
+                            '<option value="3" '+(prioridade==3?'selected':'')+'>3 (Alta)</option>' +
+                        '</select></div>' +
+                    '</div>' +
+                '</div>';
+        });
+        container.innerHTML = html;
+    };
+
+    window.salvarConfigDisciplina = function(dName, dNameId) {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (!store._cicloConfig) store._cicloConfig = {};
+        if (!store._cicloConfig.disciplinas) store._cicloConfig.disciplinas = {};
+        store._cicloConfig.disciplinas[dName] = {
+            status: document.getElementById("cfg-st-" + dNameId).value,
+            prioridade: Number(document.getElementById("cfg-pr-" + dNameId).value)
+        };
+        lset(store);
+        window.renderDisciplinasInteligente();
+        window.renderVisaoGeral();
+    };
+
+    window.renderDisciplinasInteligente();
+    window.renderVisaoGeral();
+
+    // 2. CORREÇÃO DE DATAS DE REVISÃO E PORCENTAGENS
+    window.saveCicloDate = function(eid, newDate) {
+      if (!newDate) return;
+      try {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var k0 = "e" + eid + "_r0";
+        var ud0 = store[k0] || {};
+        ud0.date = newDate;
+        ud0._manualDate = true;
+        store[k0] = ud0;
+
+        var rawIntervals = store._revIntervals || "1, 7, 15, 30";
+        var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+        if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+        var e = entryMap[eid] || getAllEntries().filter(function(x){return String(x.id)===String(eid);})[0];
+        if (e) {
+          (e.revs||[]).forEach(function(r, idx) {
+            var kr = "e" + eid + "_r" + r.num;
+            var udr = store[kr] || {};
+            if ((udr.status || "pend") !== "ok") {
+              var diasParaSomar = 30;
+              if (idx < absDays.length) { diasParaSomar = absDays[idx]; } 
+              else {
+                  var ult = absDays[absDays.length - 1];
+                  var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+                  var gap = ult - pen;
+                  diasParaSomar = ult + ((gap > 0 ? gap : 30) * (idx - absDays.length + 1));
+              }
+              udr.date = addDays(newDate, diasParaSomar);
+              store[kr] = udr;
+            }
+          });
+        }
+        
+        delete store._rolloverDate;
+        lset(store);
+        if (typeof closeDateEditor === 'function') closeDateEditor(eid);
+        initAllMaps();
+        if (typeof toast === 'function') toast("✅ Data alterada! Base de revisões ajustada.");
+        if (typeof reAll === 'function') reAll();
+      } catch(ex) { alert("Erro ao salvar data: " + ex.message); }
+    };
+
+    window.adaptInterval = function(baseGap, pct, rn) {
+      if (rn === 0) return 1; // R1 sempre crava no dia seguinte (24h)
+      if (pct >= 0.90) return Math.round(baseGap * 2.0);
+      if (pct >= 0.80) return Math.round(baseGap * 1.5);
+      if (pct >= 0.70) return baseGap;
+      if (pct >= 0.50) return Math.max(1, Math.round(baseGap * 0.6));
+      return Math.max(1, Math.round(baseGap * 0.3));
+    };
+
+    window.scheduleNextRev = function(eid, rn, completedDate, pct) {
+      var nextRn = rn + 1;
+      var e = entryMap[eid] || entryMap[String(eid)];
+      if (!e) return;
+      var totalRevs = (e.revs || []).length;
+      if (nextRn > totalRevs) return;
+
+      var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+      var nextUd = store["e" + eid + "_r" + nextRn] || {};
+      if (nextUd.status === "ok") return;
+
+      var rawIntervals = store._revIntervals || "1, 7, 15, 30";
+      var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+      if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+      var gap = 1;
+      if (rn === 0) gap = absDays[0] || 1; 
+      else {
+          var atual = absDays[rn - 1] || (rn * 30);
+          var proxima = absDays[rn] || ((rn + 1) * 30);
+          gap = proxima - atual;
+          if (gap <= 0) gap = 30;
+      }
+
+      var adaptedGap = window.adaptInterval(gap, pct, rn);
+      nextUd.date = addDays(completedDate, adaptedGap);
+
+      store["e" + eid + "_r" + nextRn] = nextUd;
+      lset(store);
+    };
+
+    // 3. GOOGLE DRIVE OFICIAL BLINDADO
+    const MEU_CLIENT_ID = "COLE_SEU_ID_AQUI"; 
+    let driveFileId = null;
+
+    function obterTokenValido() {
+        let token = localStorage.getItem("drive_token_oficial");
+        let time = localStorage.getItem("drive_token_time");
+        if (!token || !time || (Date.now() - time > 3500000)) return null;
+        return token;
+    }
+
+    window.conectarGoogleDrive = function() {
+        if(!google || !google.accounts) { alert("Aguarde o Google carregar ou verifique a internet."); return; }
+        const client = google.accounts.oauth2.initTokenClient({
+            client_id: MEU_CLIENT_ID,
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            callback: (response) => {
+                if (response.error) { alert("Erro ao conectar."); return; }
+                localStorage.setItem("drive_token_oficial", response.access_token);
+                localStorage.setItem("drive_token_time", Date.now());
+                alert("✅ Google Drive Conectado!");
+            }
+        });
+        client.requestAccessToken();
+    };
+
+    window.salvarNoDrive = async function(dadosCompletos) {
+        let token = obterTokenValido();
+        if (!token) return; 
+        try {
+            let conteudoArquivo = JSON.stringify(dadosCompletos);
+            let metadata = { name: 'EstudaJa_Backup_Oficial.json', mimeType: 'application/json' };
+            if (!driveFileId) {
+                let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
+                let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + token } });
+                let resData = await resBusca.json();
+                if (resData.files && resData.files.length > 0) driveFileId = resData.files[0].id;
+            }
+            let form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', new Blob([conteudoArquivo], { type: 'application/json' }));
+
+            let url = driveFileId ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart` : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+            let resUpload = await fetch(url, { method: driveFileId ? 'PATCH' : 'POST', headers: { Authorization: 'Bearer ' + token }, body: form });
+            if (resUpload.ok) {
+                let dadosFinais = await resUpload.json();
+                driveFileId = dadosFinais.id;
+            }
+        } catch (erro) { console.error("Erro no Drive:", erro); }
+    }
+
+    window.baixarDoDrive = async function() {
+        let token = obterTokenValido();
+        if (!token) { alert("⚠️ Clique em 'Conectar Drive' primeiro!"); return; }
+        try {
+            let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
+            let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + token } });
+            let resData = await resBusca.json();
+            
+            if (resData.files && resData.files.length > 0) {
+                let fileId = resData.files[0].id;
+                let resDownload = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + token } });
+                let dadosNuvem = await resDownload.json();
+                
+                localStorage.setItem("cldf_v2", JSON.stringify(dadosNuvem.main));
+                if (dadosNuvem.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(dadosNuvem.custom));
+                if (dadosNuvem.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(dadosNuvem.methods));
+                
+                alert("✅ Sincronizado! Seus estudos estão atualizados.");
+                location.reload();
+            } else { alert("❌ Nenhum backup encontrado no Drive."); }
+        } catch(e) { alert("Erro ao baixar: " + e.message); }
+    };
+
+    var oldLset = window.lset;
+    window.lset = function(d) {
+        var r = false;
+        if(oldLset) { try { r = oldLset(d); } catch(e){} }
+        if(!r) { 
+            d._updatedAt = Date.now();
+            localStorage.setItem("cldf_v2", JSON.stringify(d));
+            if (typeof markSaved === "function") markSaved();
+            r = true;
+        }
+        if (obterTokenValido()) {
+            var payload = {
+                main: d,
+                custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
+            };
+            window.salvarNoDrive(payload);
+        }
+        return r;
+    };
+
+}, 800);
+</script>
   
 </body>
 </html>
