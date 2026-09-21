@@ -10183,16 +10183,26 @@ setTimeout(function() {
 
 <script>
 // =========================================================================
-// INTEGRAÇÃO DEFINITIVA: GOOGLE DRIVE (Sincronização Completa)
+// INTEGRAÇÃO DEFINITIVA: GOOGLE DRIVE (Blindada para Telemóvel)
 // =========================================================================
 (function() {
-    // ⚠️ COLE SEU ID DO CLIENTE ABAIXO MANTENDO AS ASPAS:
+    // ⚠️ COLE O SEU ID DO CLIENTE ABAIXO MANTENDO AS ASPAS:
     const MEU_CLIENT_ID = "238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com"; 
     
-    let driveToken = null;
     let driveFileId = null;
 
-    // 1. Botão de Autenticação
+    // Função que procura a chave na memória profunda do telemóvel
+    function obterTokenValido() {
+        let token = localStorage.getItem("drive_token_oficial");
+        let time = localStorage.getItem("drive_token_time");
+        // A chave do Google expira ao fim de 1 hora (3600000 milissegundos)
+        if (!token || !time || (Date.now() - time > 3500000)) {
+            return null;
+        }
+        return token;
+    }
+
+    // 1. Botão de Autenticação (Botão Verde)
     window.conectarGoogleDrive = function() {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: MEU_CLIENT_ID,
@@ -10202,8 +10212,11 @@ setTimeout(function() {
                     alert("Erro ao conectar com o Google.");
                     return;
                 }
-                driveToken = response.access_token;
-                alert("✅ Google Drive Conectado! Sincronização ativada.");
+                // Salva a chave na memória profunda para resistir a actualizações do ecrã
+                localStorage.setItem("drive_token_oficial", response.access_token);
+                localStorage.setItem("drive_token_time", Date.now());
+                
+                alert("✅ Google Drive Conectado! Sincronização activada.");
                 var status = document.getElementById("fb-sync-status");
                 if (status) status.innerHTML = "☁️ Drive Conectado";
             }
@@ -10211,9 +10224,10 @@ setTimeout(function() {
         client.requestAccessToken();
     };
 
-    // 2. Motor de Envio
-    async function salvarNoDrive(dadosCompletos) {
-        if (!driveToken) return; 
+    // 2. Motor de Envio Invisível (Salva sozinho ao fazer tarefas)
+    window.salvarNoDrive = async function(dadosCompletos) {
+        let token = obterTokenValido();
+        if (!token) return; 
         try {
             var status = document.getElementById("fb-sync-status");
             if (status) status.innerHTML = "⏳ Salvando no Drive...";
@@ -10224,7 +10238,7 @@ setTimeout(function() {
             if (!driveFileId) {
                 let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
                 let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
-                    headers: { Authorization: 'Bearer ' + driveToken }
+                    headers: { Authorization: 'Bearer ' + token }
                 });
                 let resData = await resBusca.json();
                 if (resData.files && resData.files.length > 0) {
@@ -10244,7 +10258,7 @@ setTimeout(function() {
 
             let resUpload = await fetch(url, {
                 method: method,
-                headers: { Authorization: 'Bearer ' + driveToken },
+                headers: { Authorization: 'Bearer ' + token },
                 body: form
             });
 
@@ -10260,27 +10274,31 @@ setTimeout(function() {
         }
     }
 
-    // 3. Puxar da Nuvem (Agora do lado de dentro da cerca!)
+    // 3. Puxar da Nuvem (Botão Azul)
     window.baixarDoDrive = async function() {
-        if (!driveToken) { alert("⚠️ Por favor, clique em 'Conectar Drive' primeiro!"); return; }
+        let token = obterTokenValido();
+        if (!token) { 
+            alert("⚠️ Por favor, clique em 'Conectar Drive' primeiro!"); 
+            return; 
+        }
         try {
             var status = document.getElementById("fb-sync-status");
             if (status) status.innerHTML = "⏳ Puxando dados...";
             
             let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
-            let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + driveToken } });
+            let resBusca = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: 'Bearer ' + token } });
             let resData = await resBusca.json();
             
             if (resData.files && resData.files.length > 0) {
                 let fileId = resData.files[0].id;
-                let resDownload = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + driveToken } });
+                let resDownload = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + token } });
                 let dadosNuvem = await resDownload.json();
                 
                 localStorage.setItem("cldf_v2", JSON.stringify(dadosNuvem.main));
                 if (dadosNuvem.custom) localStorage.setItem("cldf_v2_custom", JSON.stringify(dadosNuvem.custom));
                 if (dadosNuvem.methods) localStorage.setItem("cldf_gab_methods", JSON.stringify(dadosNuvem.methods));
                 
-                alert("✅ Sincronizado! Seus estudos estão atualizados nesta tela.");
+                alert("✅ Sincronizado! Os seus estudos estão actualizados nesta tela.");
                 location.reload();
             } else {
                 alert("❌ Nenhum backup encontrado no seu Drive ainda.");
@@ -10288,50 +10306,19 @@ setTimeout(function() {
         } catch(e) { alert("Erro ao baixar: " + e.message); }
     };
 
-    // 4. Importar manual (opcional)
-    window.importData = function(event) {
-        var file = event.target.files[0];
-        if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            var raw = JSON.parse(e.target.result);
-            var importedData = raw.userData ? raw.userData : raw;
-            
-            localStorage.setItem("cldf_v2", JSON.stringify(importedData));
-            if (raw.customEntries) localStorage.setItem("cldf_v2_custom", JSON.stringify(raw.customEntries));
-            
-            var payload = {
-                main: importedData,
-                custom: raw.customEntries || JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
-                methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
-            };
-            
-            if (driveToken) {
-                salvarNoDrive(payload).then(() => {
-                    alert("✅ Restaurado e salvo no Google Drive!");
-                    location.reload();
-                });
-            } else {
-                alert("✅ Backup restaurado no celular! (Conecte o Drive para enviar à nuvem).");
-                location.reload();
-            }
-        };
-        reader.readAsText(file);
-    };
-
-    // 5. Salva na nuvem ao marcar checkboxes
+    // 4. Intercepta a gravação de dados para enviar para a nuvem
     window.lset = function(d) {
         try {
             d._updatedAt = Date.now();
             localStorage.setItem("cldf_v2", JSON.stringify(d));
             
-            if (driveToken) {
+            if (obterTokenValido()) {
                 var payload = {
                     main: d,
                     custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
                     methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
                 };
-                salvarNoDrive(payload);
+                window.salvarNoDrive(payload);
             }
             if (typeof markSaved === "function") markSaved();
             return true;
