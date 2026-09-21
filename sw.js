@@ -1,17 +1,30 @@
-const CACHE_NAME = 'estudaja-v1';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon.png'
-];
+const CACHE_NAME = 'estudaja-v2'; // O 'v2' avisa o telemóvel para destruir o cache antigo
 
-// Instala o aplicativo no celular/navegador
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+  self.skipWaiting(); // Força a atualização imediata e expulsa a versão antiga
 });
 
-// Faz o aplicativo funcionar offline
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(keys.map(key => {
+        if (key !== CACHE_NAME) return caches.delete(key);
+      }));
+    })
+  );
+  return self.clients.claim();
+});
+
 self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(response => response || fetch(e.request)));
+  // NOVA REGRA: Vai à internet primeiro (Network First). 
+  // Só mostra a versão offline se o telemóvel estiver em modo avião.
+  e.respondWith(
+    fetch(e.request)
+      .then(res => {
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
+  );
 });
