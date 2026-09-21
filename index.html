@@ -44,7 +44,7 @@ function salvarConfigGlobais() {
     renderVisaoGeral();
 }
 
-window.renderVisaoGeral = function() {
+function renderVisaoGeral() {
     var container = document.getElementById("painel-visao-geral");
     if (!container) return;
 
@@ -86,7 +86,7 @@ window.renderVisaoGeral = function() {
             if (pendentes === 0) {
                 statusViabilidade = "🎉 Concluída"; corViab = "var(--brand)";
             } else if (horasNecessariasPorSem > carga * 1.5) {
-                statusViabilidade = "❌ Incompatível (Meta exige ~"+horasNecessariasPorSem.toFixed(1)+"h/sem. Aumente o prazo global ou horas semanais)"; corViab = "var(--red)";
+                statusViabilidade = "❌ Incompatível (Aumente o prazo global ou horas semanais)"; corViab = "var(--red)";
             } else if (horasNecessariasPorSem > carga) {
                 statusViabilidade = "⚠️ Apertada (Vai exigir dedicação extra)"; corViab = "orange";
             }
@@ -117,7 +117,7 @@ window.renderVisaoGeral = function() {
         (htmlMetas || "<span style='font-size:0.8rem; color:var(--ink3);'>Nenhuma disciplina activa configurada.</span>");
         
     container.innerHTML = htmlPainel;
-};
+}
 
 // =====================================================================
 // 1. RENDERIZAÇÃO BLINDADA DAS DISCIPLINAS
