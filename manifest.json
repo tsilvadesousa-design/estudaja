@@ -1,0 +1,17 @@
+{
+  "name": "EstudaJá - Ciclo de Estudos",
+  "short_name": "EstudaJá",
+  "description": "Aplicativo inteligente para ciclo de estudos e revisões.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121214",
+  "theme_color": "#8257e5",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
