@@ -10131,13 +10131,16 @@ setTimeout(function() {
 </div>
 
 <!-- ========================================================================= -->
-<!-- MASTER SCRIPT: IA, DATAS, VISÃO GERAL E DRIVE -->
+<!-- MEGA SCRIPT DEFINITIVO: IA, DATAS, VISÃO GERAL E DRIVE -->
 <!-- ========================================================================= -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
+// Atraso de 800ms para garantir que a base de dados (ENTRIES) foi carregada
 setTimeout(function() {
     
-    // 1. VISÃO GERAL
+    // ---------------------------------------------------------
+    // 1. VISÃO GERAL (Painel de Metas Globais)
+    // ---------------------------------------------------------
     window.renderVisaoGeral = function() {
         var container = document.getElementById("painel-visao-geral");
         if (!container) return;
@@ -10217,7 +10220,9 @@ setTimeout(function() {
         container.innerHTML = htmlPainel;
     };
 
-    // 2. DISCIPLINAS
+    // ---------------------------------------------------------
+    // 2. DISCIPLINAS (Caixas Individuais com Prioridade)
+    // ---------------------------------------------------------
     window.renderDisciplinasInteligente = function() {
         var container = document.getElementById("lista-disciplinas-ia") || document.getElementById("lista-disciplinas-inteligente");
         if (!container) return; 
@@ -10226,16 +10231,12 @@ setTimeout(function() {
         var cicloCfg = store._cicloConfig || {};
         var discSettings = cicloCfg.disciplinas || {};
         var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-        
+        if(allEntries.length === 0) return;
+
         var disciplinasUnicas = [];
         allEntries.forEach(function(e) {
             if (e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
         });
-
-        if (disciplinasUnicas.length === 0) {
-            container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina encontrada.</div>';
-            return;
-        }
 
         var html = "";
         disciplinasUnicas.forEach(function(dName) {
@@ -10276,7 +10277,9 @@ setTimeout(function() {
         window.renderVisaoGeral();
     };
 
-    // 3. MOTOR INTELIGENTE (AQUI ESTÁ A FUNÇÃO QUE FALTAVA)
+    // ---------------------------------------------------------
+    // 3. MOTOR INTELIGENTE (Cálculo do Ciclo - Botão Azul)
+    // ---------------------------------------------------------
     window.gerarPlanoIA = function() {
         var metaDiasStr = document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "80";
         var metaDias = parseInt(metaDiasStr) || 80;
@@ -10398,6 +10401,15 @@ setTimeout(function() {
         }
     };
 
+    window.salvarConfigGlobais = function() {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (!store._cicloConfig) store._cicloConfig = {};
+        if (document.getElementById("replan-horas-disp")) store._cicloConfig.horasDisponiveis = document.getElementById("replan-horas-disp").value;
+        if (document.getElementById("replan-meta-dias")) store._cicloConfig.metaDias = document.getElementById("replan-meta-dias").value;
+        lset(store);
+        window.renderVisaoGeral();
+    };
+
     window.salvarIntervalosRevisao = function() {
         var val = document.getElementById("rev-intervals-input").value;
         var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
@@ -10406,7 +10418,7 @@ setTimeout(function() {
         if (typeof toast === 'function') toast("\u2713 Intervalos salvos!");
     };
 
-    // Override initGerenciar
+    // Override initGerenciar para assegurar que as caixas carregam os números certos
     var oldInitGerenciar = window.initGerenciar;
     window.initGerenciar = function() {
         if (typeof oldInitGerenciar === 'function') oldInitGerenciar();
@@ -10419,11 +10431,13 @@ setTimeout(function() {
         window.renderVisaoGeral();
     };
 
-    // Renderiza logo a interface
+    // Inicialização segura
     window.renderDisciplinasInteligente();
     window.renderVisaoGeral();
 
-    // 4. CORREÇÃO DE DATAS DE REVISÃO E PORCENTAGENS
+    // ---------------------------------------------------------
+    // 4. CORREÇÃO DE DATAS E ADAPTAÇÃO DE ESTATÍSTICA (Anki Mode)
+    // ---------------------------------------------------------
     window.saveCicloDate = function(eid, newDate) {
       if (!newDate) return;
       try {
@@ -10507,8 +10521,10 @@ setTimeout(function() {
       lset(store);
     };
 
+    // ---------------------------------------------------------
     // 5. GOOGLE DRIVE OFICIAL BLINDADO
-    const MEU_CLIENT_ID = "238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com"; 
+    // ---------------------------------------------------------
+    const MEU_CLIENT_ID = "COLE_SEU_ID_AQUI"; 
     let driveFileId = null;
 
     function obterTokenValido() {
@@ -10521,7 +10537,7 @@ setTimeout(function() {
     window.conectarGoogleDrive = function() {
         if(!google || !google.accounts) { alert("Aguarde o Google carregar ou verifique a internet."); return; }
         const client = google.accounts.oauth2.initTokenClient({
-            client_id: 238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com,
+            client_id: MEU_CLIENT_ID,
             scope: 'https://www.googleapis.com/auth/drive.file',
             callback: (response) => {
                 if (response.error) { alert("Erro ao conectar."); return; }
@@ -10556,7 +10572,7 @@ setTimeout(function() {
                 driveFileId = dadosFinais.id;
             }
         } catch (erro) { console.error("Erro no Drive:", erro); }
-    }
+    };
 
     window.baixarDoDrive = async function() {
         let token = obterTokenValido();
@@ -10581,6 +10597,7 @@ setTimeout(function() {
         } catch(e) { alert("Erro ao baixar: " + e.message); }
     };
 
+    // Sobrescrita do lset original para enviar sempre as atualizações para o Drive
     var oldLset = window.lset;
     window.lset = function(d) {
         var r = false;
