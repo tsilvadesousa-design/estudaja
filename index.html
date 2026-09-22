@@ -10131,14 +10131,13 @@ setTimeout(function() {
 </div>
 
 <!-- ========================================================================= -->
-<!-- MASTER SCRIPT: CORRIGE DATAS, IA, DRIVE E VISÃO GERAL -->
+<!-- MASTER SCRIPT: IA, DATAS, VISÃO GERAL E DRIVE -->
 <!-- ========================================================================= -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-// Um atraso de segurança (800ms) para garantir que as matérias carregaram primeiro
 setTimeout(function() {
     
-    // 1. VISÃO GERAL E DISCIPLINAS UNIFICADAS
+    // 1. VISÃO GERAL
     window.renderVisaoGeral = function() {
         var container = document.getElementById("painel-visao-geral");
         if (!container) return;
@@ -10152,7 +10151,7 @@ setTimeout(function() {
         var semanas = metaDiasGlobal / 7 || 1;
         
         var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-        if(allEntries.length === 0) return; // Protecção contra apagão na tela
+        if(allEntries.length === 0) return;
 
         var ativas = 0, pausadas = 0, somaCargaAtivas = 0;
         var htmlMetas = "";
@@ -10218,6 +10217,7 @@ setTimeout(function() {
         container.innerHTML = htmlPainel;
     };
 
+    // 2. DISCIPLINAS
     window.renderDisciplinasInteligente = function() {
         var container = document.getElementById("lista-disciplinas-ia") || document.getElementById("lista-disciplinas-inteligente");
         if (!container) return; 
@@ -10226,12 +10226,16 @@ setTimeout(function() {
         var cicloCfg = store._cicloConfig || {};
         var discSettings = cicloCfg.disciplinas || {};
         var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-        if(allEntries.length === 0) return;
-
+        
         var disciplinasUnicas = [];
         allEntries.forEach(function(e) {
             if (e.disc && disciplinasUnicas.indexOf(e.disc) === -1) disciplinasUnicas.push(e.disc);
         });
+
+        if (disciplinasUnicas.length === 0) {
+            container.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--ink3);">Nenhuma disciplina encontrada.</div>';
+            return;
+        }
 
         var html = "";
         disciplinasUnicas.forEach(function(dName) {
@@ -10272,10 +10276,154 @@ setTimeout(function() {
         window.renderVisaoGeral();
     };
 
+    // 3. MOTOR INTELIGENTE (AQUI ESTÁ A FUNÇÃO QUE FALTAVA)
+    window.gerarPlanoIA = function() {
+        var metaDiasStr = document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "80";
+        var metaDias = parseInt(metaDiasStr) || 80;
+        var horasSemanaStr = document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : "20";
+        var horasSemana = parseInt(horasSemanaStr) || 20;
+
+        try {
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var cicloCfg = store._cicloConfig || {};
+            cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+
+            var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+            var discData = {};
+            var activeDiscs = [];
+            var sumPriorities = 0;
+            var totalPending = 0;
+
+            allEntries.forEach(function(entry) {
+                if (entry.disc) {
+                    var dName = entry.disc;
+                    var cfg = cicloCfg.disciplinas[dName] || { status: "ativa", prioridade: 3 };
+
+                    if (cfg.status === "ativa" || cfg.status === "Ativa") {
+                        if (!discData[dName]) {
+                            activeDiscs.push(dName);
+                            var p = parseInt(cfg.prioridade) || 3;
+                            sumPriorities += p;
+                            discData[dName] = { prio: p, pendingCount: 0, entries: [] };
+                        }
+                        var k0 = "e" + entry.id + "_r0";
+                        var ud0 = store[k0] || {};
+                        if (ud0.status !== "ok") {
+                            discData[dName].pendingCount++;
+                            totalPending++;
+                            discData[dName].entries.push(entry.id);
+                        }
+                    }
+                }
+            });
+
+            var daily = Math.ceil(totalPending / (metaDias > 0 ? metaDias : 1));
+            if (isNaN(daily) || daily < 1) daily = 1;
+
+            activeDiscs.forEach(function(dName) {
+                var data = discData[dName];
+                var peso = sumPriorities > 0 ? (data.prio / sumPriorities) : 1;
+                if (!cicloCfg.disciplinas[dName]) cicloCfg.disciplinas[dName] = { status: "ativa", prioridade: data.prio };
+                cicloCfg.disciplinas[dName].cargaHoraria = Math.max(1, Math.round(horasSemana * peso));
+            });
+
+            cicloCfg.horasDisponiveis = horasSemana;
+            cicloCfg.metaDias = metaDias;
+            store._cicloConfig = cicloCfg;
+
+            var start = new Date().toISOString().split('T')[0];
+            var currentDay = start;
+            var countToday = 0;
+            var pool = [];
+            
+            var maxLen = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
+            for (var i = 0; i < maxLen; i++) {
+                activeDiscs.forEach(function(dName) {
+                    if (discData[dName].entries[i]) pool.push(discData[dName].entries[i]);
+                });
+            }
+
+            var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+
+            pool.forEach(function(eid) {
+                var k0 = "e" + eid + "_r0";
+                var ud0 = store[k0] || {};
+                
+                if (respectManual && ud0._manualDate) return;
+
+                ud0.date = currentDay;
+                store[k0] = ud0;
+                
+                var rawIntervals = store._revIntervals || "1, 7, 15, 30";
+                var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+                if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+                var e = typeof entryMap !== "undefined" ? entryMap[eid] : allEntries.filter(function(x){return String(x.id)===String(eid);})[0];
+                if (e) {
+                  (e.revs||[]).forEach(function(r, idx) {
+                    var kr = "e" + eid + "_r" + r.num;
+                    var udr = store[kr] || {};
+                    if ((udr.status || "pend") !== "ok") {
+                      var diasParaSomar = 30;
+                      if (idx < absDays.length) {
+                          diasParaSomar = absDays[idx];
+                      } else {
+                          var ult = absDays[absDays.length - 1];
+                          var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+                          var gap = ult - pen;
+                          diasParaSomar = ult + ((gap > 0 ? gap : 30) * (idx - absDays.length + 1));
+                      }
+                      udr.date = addDays(currentDay, diasParaSomar);
+                      store[kr] = udr;
+                    }
+                  });
+                }
+
+                countToday++;
+                if (countToday >= daily) {
+                    countToday = 0;
+                    currentDay = addDays(currentDay, 1);
+                }
+            });
+
+            lset(store);
+            if(typeof initAllMaps === 'function') initAllMaps();
+            if(typeof toast === 'function') toast("🎯 Plano Gerado e Carga Alocada!");
+            else alert("🎯 Plano Gerado e Carga Alocada!");
+
+            if(typeof reAll === 'function') reAll();
+            window.renderVisaoGeral();
+        } catch(ex) {
+            alert("Erro ao replanejar: " + ex.message);
+        }
+    };
+
+    window.salvarIntervalosRevisao = function() {
+        var val = document.getElementById("rev-intervals-input").value;
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        store._revIntervals = val;
+        lset(store);
+        if (typeof toast === 'function') toast("\u2713 Intervalos salvos!");
+    };
+
+    // Override initGerenciar
+    var oldInitGerenciar = window.initGerenciar;
+    window.initGerenciar = function() {
+        if (typeof oldInitGerenciar === 'function') oldInitGerenciar();
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (store._cicloConfig) {
+            if(document.getElementById("replan-horas-disp")) document.getElementById("replan-horas-disp").value = store._cicloConfig.horasDisponiveis || 20;
+            if(document.getElementById("replan-meta-dias")) document.getElementById("replan-meta-dias").value = store._cicloConfig.metaDias || 80;
+        }
+        window.renderDisciplinasInteligente();
+        window.renderVisaoGeral();
+    };
+
+    // Renderiza logo a interface
     window.renderDisciplinasInteligente();
     window.renderVisaoGeral();
 
-    // 2. CORREÇÃO DE DATAS DE REVISÃO E PORCENTAGENS
+    // 4. CORREÇÃO DE DATAS DE REVISÃO E PORCENTAGENS
     window.saveCicloDate = function(eid, newDate) {
       if (!newDate) return;
       try {
@@ -10290,7 +10438,7 @@ setTimeout(function() {
         var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
         if (absDays.length === 0) absDays = [1, 7, 15, 30];
 
-        var e = entryMap[eid] || getAllEntries().filter(function(x){return String(x.id)===String(eid);})[0];
+        var e = typeof entryMap !== "undefined" ? entryMap[eid] : (typeof getAllEntries === 'function' ? getAllEntries() : []).filter(function(x){return String(x.id)===String(eid);})[0];
         if (e) {
           (e.revs||[]).forEach(function(r, idx) {
             var kr = "e" + eid + "_r" + r.num;
@@ -10313,14 +10461,14 @@ setTimeout(function() {
         delete store._rolloverDate;
         lset(store);
         if (typeof closeDateEditor === 'function') closeDateEditor(eid);
-        initAllMaps();
+        if (typeof initAllMaps === 'function') initAllMaps();
         if (typeof toast === 'function') toast("✅ Data alterada! Base de revisões ajustada.");
         if (typeof reAll === 'function') reAll();
       } catch(ex) { alert("Erro ao salvar data: " + ex.message); }
     };
 
     window.adaptInterval = function(baseGap, pct, rn) {
-      if (rn === 0) return 1; // R1 sempre crava no dia seguinte (24h)
+      if (rn === 0) return 1; 
       if (pct >= 0.90) return Math.round(baseGap * 2.0);
       if (pct >= 0.80) return Math.round(baseGap * 1.5);
       if (pct >= 0.70) return baseGap;
@@ -10330,7 +10478,7 @@ setTimeout(function() {
 
     window.scheduleNextRev = function(eid, rn, completedDate, pct) {
       var nextRn = rn + 1;
-      var e = entryMap[eid] || entryMap[String(eid)];
+      var e = typeof entryMap !== "undefined" ? entryMap[eid] : entryMap[String(eid)];
       if (!e) return;
       var totalRevs = (e.revs || []).length;
       if (nextRn > totalRevs) return;
@@ -10359,8 +10507,8 @@ setTimeout(function() {
       lset(store);
     };
 
-    // 3. GOOGLE DRIVE OFICIAL BLINDADO
-    const MEU_CLIENT_ID = "238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com"; 
+    // 5. GOOGLE DRIVE OFICIAL BLINDADO
+    const MEU_CLIENT_ID = "COLE_SEU_ID_AQUI"; 
     let driveFileId = null;
 
     function obterTokenValido() {
