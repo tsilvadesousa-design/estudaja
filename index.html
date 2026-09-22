@@ -10537,7 +10537,7 @@ setTimeout(function() {
     window.conectarGoogleDrive = function() {
         if(!google || !google.accounts) { alert("Aguarde o Google carregar ou verifique a internet."); return; }
         const client = google.accounts.oauth2.initTokenClient({
-            client_id: 238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com,
+            client_id: MEU_CLIENT_ID,
             scope: 'https://www.googleapis.com/auth/drive.file',
             callback: (response) => {
                 if (response.error) { alert("Erro ao conectar."); return; }
