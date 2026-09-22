@@ -9998,7 +9998,7 @@ setTimeout(function() {
     // 1. Botão de Autenticação (Botão Verde)
     window.conectarGoogleDrive = function() {
         const client = google.accounts.oauth2.initTokenClient({
-            client_id: 238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com,
+            client_id: MEU_CLIENT_ID,
             scope: 'https://www.googleapis.com/auth/drive.file',
             callback: (response) => {
                 if (response.error) {
@@ -10524,7 +10524,7 @@ setTimeout(function() {
     // ---------------------------------------------------------
     // 5. GOOGLE DRIVE OFICIAL BLINDADO
     // ---------------------------------------------------------
-    const MEU_CLIENT_ID = "COLE_SEU_ID_AQUI"; 
+    const MEU_CLIENT_ID = "238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com"; 
     let driveFileId = null;
 
     function obterTokenValido() {
@@ -10537,7 +10537,7 @@ setTimeout(function() {
     window.conectarGoogleDrive = function() {
         if(!google || !google.accounts) { alert("Aguarde o Google carregar ou verifique a internet."); return; }
         const client = google.accounts.oauth2.initTokenClient({
-            client_id: MEU_CLIENT_ID,
+            client_id: 238923430365-gu97t1svn9uaelqqpj4hp9ckn9c0ptj2.apps.googleusercontent.com,
             scope: 'https://www.googleapis.com/auth/drive.file',
             callback: (response) => {
                 if (response.error) { alert("Erro ao conectar."); return; }
