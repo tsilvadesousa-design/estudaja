@@ -8868,7 +8868,6 @@ setTimeout(function() {
     if (typeof window.renderDisciplinasInteligente === "function") window.renderDisciplinasInteligente();
     if (typeof window.reconstruirMenusDisciplinas === "function") window.reconstruirMenusDisciplinas();
 }, 1000);
-</script>
 
 <script>
 // =========================================================================
@@ -8941,7 +8940,7 @@ setTimeout(function() {
     window.cloudPush = function() {}; 
     window.schedulePushToFirestore = function() {}; 
 })();
-</script>
+  
 <script>
 // =========================================================================
 // CORREÇÃO FINAL: RESGATE DAS MATÉRIAS E SINCRONIZAÇÃO LIMPA
@@ -9010,7 +9009,7 @@ setTimeout(function() {
         } catch (ex) { return false; }
     };
 })();
-</script>
+
 <script>
 // =========================================================================
 // CORREÇÃO DEFINITIVA: O TRATOR DE DADOS (CORTA QUALQUER ARQUIVO GIGANTE)
@@ -9756,6 +9755,110 @@ setTimeout(function() {
     };
 
 }, 800);
+
+<!-- ========================================================================= -->
+<!-- PATCH DEFINITIVO DA AGENDA (Foco e IA) -->
+<!-- ========================================================================= -->
+<script>
+setTimeout(function() {
+    // 1. Substituir a lógica que constrói o calendário (Esconder revisões futuras)
+    var buildLogic = function() {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+        window.agMap = {}; 
+
+        allEntries.forEach(function(e) {
+            var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+            if (statusDisc === "pausada") return;
+
+            function push(ds, tipo, rn) {
+                if (!ds) return;
+                if (!window.agMap[ds]) window.agMap[ds] = [];
+                var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+            }
+
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+            var studyDate = ud0.date || e.date;
+            
+            // O estudo "Novo" entra sempre no calendário
+            push(studyDate, "NOVO", 0);
+
+            // Cascata Inteligente: A revisão só aparece se o passo anterior estiver OK
+            var prevStatus = r0Status;
+            (e.revs || []).forEach(function(r) {
+                var udr = store["e" + e.id + "_r" + r.num] || {};
+                var revDate = udr.date || r.date;
+                var currStatus = udr.status || "pend";
+
+                if (prevStatus === "ok" || currStatus === "ok") {
+                    push(revDate, "REV", r.num);
+                }
+                prevStatus = currStatus;
+            });
+        });
+    };
+
+    // Injeta a lógica nos motores originais do seu site
+    window.rebuildAgMap = buildLogic;
+    window.initAllMaps = function() {
+        if (typeof rebuildEntryMap === 'function') rebuildEntryMap();
+        if (typeof renderCicloFilters === 'function') renderCicloFilters();
+        buildLogic();
+    };
+
+    // 2. Substituir o visual por 1 única coluna centralizada
+    window.renderAgenda3col = function() {
+        var mainDate = window.agViewDate || window.TODAY;
+        
+        // Força a estrutura de 1 coluna elegante
+        var a3 = document.querySelector(".a3");
+        if (a3 && !document.getElementById("ag-view-title")) {
+            a3.style.display = "block";
+            a3.style.maxWidth = "800px";
+            a3.style.margin = "0 auto";
+            a3.innerHTML = "<div class='acol td' style='background: var(--bg2); border: 1px solid var(--brandbg2); border-radius: 12px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.2);'>" +
+                           "<div class='acol-lbl' style='font-size: 1.2rem; color: var(--ink); margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--bd); padding-bottom: 0.8rem;'>" +
+                           "<span id='ag-view-title' style='font-weight: 800; display: flex; align-items: center; gap: 0.5rem;'>🎯 Agenda</span>" +
+                           "<span class='adate' id='ag-view-date-main' style='color: var(--brand); font-weight: 800; font-family: var(--fm); background: var(--brandbg); padding: 0.3rem 0.8rem; border-radius: 6px;'></span>" +
+                           "</div><div id='col-td'></div></div>";
+        }
+
+        var titleStr = "🎯 " + (mainDate === window.TODAY ? "Hoje" : mainDate < window.TODAY ? "Histórico Passado" : "Planeamento Futuro");
+        var lbl = document.getElementById("ag-view-title");
+        if(lbl) lbl.innerHTML = titleStr;
+        
+        var dateLbl = document.getElementById("ag-view-date-main");
+        if(dateLbl && typeof fmtD === 'function' && typeof fmtWd === 'function') dateLbl.textContent = fmtD(mainDate) + " - " + fmtWd(mainDate);
+
+        // Esconder colunas originais de Ontem e Amanhã
+        var ydCol = document.querySelector(".acol.yd"); if(ydCol) ydCol.style.display = "none";
+        var tmCol = document.querySelector(".acol.tm"); if(tmCol) tmCol.style.display = "none";
+
+        // Renderizar itens APENAS na coluna central
+        var items = window.agMap[mainDate] || [];
+        var el = document.getElementById("col-td");
+        if (el) {
+            if (!items.length) {
+                el.innerHTML = "<div style='text-align:center;padding:3rem 1rem;font-size:0.85rem;color:var(--ink4);font-weight:600;'>🎉 Nada agendado para este dia! Tira um descanso ou adianta matérias atrasadas.</div>";
+            } else {
+                el.innerHTML = items.map(function(item) { return typeof makeCard === 'function' ? makeCard(item, typeof lget === 'function' ? lget() : JSON.parse(localStorage.getItem("cldf_v2") || "{}")) : ""; }).join("");
+            }
+        }
+        
+        var topDate = document.getElementById("ag-view-date");
+        if(topDate && typeof fmtD === 'function') topDate.textContent = fmtD(mainDate);
+    };
+
+    // 3. Activa as mudanças silenciosamente
+    buildLogic();
+    if (typeof window.renderAgenda === 'function') window.renderAgenda();
+
+}, 1200);
 </script>
   
 </body>
