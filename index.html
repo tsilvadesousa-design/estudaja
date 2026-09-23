@@ -7243,9 +7243,88 @@ function rebuildEntryMap() {
 
 // ── INIT GERENCIAR on page switch ─────────────────────────────
 function initAllMaps() {
-  rebuildEntryMap();
-  rebuildAgMap();
-  renderCicloFilters();
+    // 1. Manter o que faz as outras abas funcionarem (Pára o erro do ecrã branco!)
+    if(typeof rebuildEntryMap === 'function') rebuildEntryMap();
+    if(typeof renderCicloFilters === 'function') renderCicloFilters();
+    
+    // 2. Lógica Blindada da Agenda
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+    agMap = {}; 
+
+    allEntries.forEach(function(e) {
+        var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+        if (statusDisc === "pausada") return;
+
+        function push(ds, tipo, rn) {
+            if (!ds) return;
+            if (!agMap[ds]) agMap[ds] = [];
+            var exists = agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+            if(!exists) agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+        }
+
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+        var studyDate = ud0.date || e.date;
+        
+        // O estudo "Novo" entra sempre no calendário
+        push(studyDate, "NOVO", 0);
+
+        // Cascata Inteligente: A revisão só aparece se o passo anterior estiver OK
+        var prevStatus = r0Status;
+        (e.revs || []).forEach(function(r) {
+            var udr = store["e" + e.id + "_r" + r.num] || {};
+            var revDate = udr.date || r.date;
+            var currStatus = udr.status || "pend";
+
+            if (prevStatus === "ok" || currStatus === "ok") {
+                push(revDate, "REV", r.num);
+            }
+            prevStatus = currStatus;
+        });
+    });
+}
+
+function renderCol(ds, colId) {
+  var items = agMap[ds] || [];
+  var el = document.getElementById(colId);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = "<div style='text-align:center;padding:3rem 1rem;font-size:0.85rem;color:var(--ink4);font-weight:600;'>🎉 Nada agendado para este dia! Tira um descanso ou adianta matérias atrasadas.</div>";
+    return;
+  }
+  el.innerHTML = items.map(function(item) { return makeCard(item, lget()); }).join("");
+}
+
+function renderAgenda3col() {
+  // Transforma automaticamente as 3 colunas numa única caixa focada e limpa
+  var a3 = document.querySelector(".a3");
+  if (a3 && !document.getElementById("ag-view-title")) {
+      a3.style.display = "block";
+      a3.style.maxWidth = "800px";
+      a3.style.margin = "0 auto";
+      a3.innerHTML = "<div class='acol td' style='background: var(--bg2); border: 1px solid var(--brandbg2); border-radius: 12px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.2);'>" +
+                     "<div class='acol-lbl' style='font-size: 1.2rem; color: var(--ink); margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--bd); padding-bottom: 0.8rem;'>" +
+                     "<span id='ag-view-title' style='font-weight: 800; display: flex; align-items: center; gap: 0.5rem;'>🎯 Agenda do Dia</span>" +
+                     "<span class='adate' id='ag-view-date-main' style='color: var(--brand); font-weight: 800; font-family: var(--fm); background: var(--brandbg); padding: 0.3rem 0.8rem; border-radius: 6px;'></span>" +
+                     "</div><div id='col-td'></div></div>";
+  }
+
+  var mainDate = agViewDate;
+  var titleStr = "🎯 " + (mainDate === TODAY ? "Hoje" : mainDate < TODAY ? "Histórico Passado" : "Planeamento Futuro");
+  var lbl = document.getElementById("ag-view-title");
+  if(lbl) lbl.innerHTML = titleStr;
+  
+  var dateLbl = document.getElementById("ag-view-date-main");
+  if(dateLbl) dateLbl.textContent = fmtD(mainDate) + " - " + fmtWd(mainDate);
+
+  renderCol(mainDate, "col-td");
+  
+  var topDate = document.getElementById("ag-view-date");
+  if(topDate) topDate.textContent = fmtD(mainDate);
 }
 
 // ── showPage override to init gerenciar ──────────────────────
