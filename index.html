@@ -10620,6 +10620,65 @@ setTimeout(function() {
     };
 
 }, 800);
+
+<!-- ========================================================================= -->
+<!-- ADESIVO: AGENDA DE 1 COLUNA E CASCATA INTELIGENTE DE REVISÕES -->
+<!-- ========================================================================= -->
+<style>
+  /* 1. Transforma o layout antigo numa caixa centralizada, ocultando Ontem e Amanhã */
+  .ag-3col { grid-template-columns: 1fr !important; max-width: 800px; margin: 0 auto; display: block !important; }
+  .acol.yd, .acol.tm { display: none !important; }
+  .acol.td { background: var(--bg2); border: 1px solid var(--brand); border-radius: 12px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 2rem; }
+  .acol.td .acol-lbl { font-size: 1.3rem; border-bottom: 2px solid var(--bd); padding-bottom: 0.8rem; margin-bottom: 1.5rem; }
+</style>
+
+<script>
+setTimeout(function() {
+    // 2. Intercepta o motor de agenda para adicionar a regra de esconder revisões
+    if (typeof window.rebuildAgMap === 'function') {
+        window.rebuildAgMap = function() {
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var cicloCfg = store._cicloConfig || {};
+            var discSettings = cicloCfg.disciplinas || {};
+            var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+            window.agMap = {}; 
+
+            allEntries.forEach(function(e) {
+                var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+                if (statusDisc === "pausada") return;
+
+                function push(ds, tipo, rn) {
+                    if (!ds) return;
+                    if (!window.agMap[ds]) window.agMap[ds] = [];
+                    var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                    if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+                }
+
+                var ud0 = store["e" + e.id + "_r0"] || {};
+                var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+                
+                // A matéria 'Nova' entra sempre
+                push(ud0.date || e.date, "NOVO", 0);
+
+                // As Revisões 1, 2, etc, só entram se o passo imediatamente anterior estiver OK
+                var prevStatus = r0Status;
+                (e.revs || []).forEach(function(r) {
+                    var udr = store["e" + e.id + "_r" + r.num] || {};
+                    var currStatus = udr.status || "pend";
+
+                    if (prevStatus === "ok" || currStatus === "ok") {
+                        push(udr.date || r.date, "REV", r.num);
+                    }
+                    prevStatus = currStatus;
+                });
+            });
+        };
+        // 3. Força a atualização do calendário com as novas regras
+        window.rebuildAgMap();
+        if (typeof renderAgenda === 'function') renderAgenda();
+    }
+}, 800);
 </script>
   
 </body>
