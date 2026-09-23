@@ -797,25 +797,15 @@ select option{background:var(--bg3)}
     </div>
   </div>
 
-  <div class="a3">
-    <div class="acol yd">
-      <div class="acol-lbl">Ontem <span class="adate" id="lbl-yd"></span></div>
-      <div id="col-yd"></div>
-    </div>
-    <div class="acol td">
-      <div class="acol-lbl">&#127919; Hoje <span class="adate" id="lbl-td"></span></div>
+<div class="a3" id="ag-view-container" style="display: block; max-width: 800px; margin: 0 auto;">
+    <div class="acol td" style="background: var(--bg2); border: 1px solid var(--brandbg2); border-radius: 12px; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.2);">
+      <div class="acol-lbl" style="font-size: 1.2rem; color: var(--ink); margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--bd); padding-bottom: 0.8rem;">
+          <span id="ag-view-title" style="font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">🎯 Agenda do Dia</span>
+          <span class="adate" id="ag-view-date-main" style="color: var(--brand); font-weight: 800; font-family: var(--fm); background: var(--brandbg); padding: 0.3rem 0.8rem; border-radius: 6px;"></span>
+      </div>
       <div id="col-td"></div>
     </div>
-    <div class="acol tm">
-      <div class="acol-lbl">Amanh&#227; <span class="adate" id="lbl-tm"></span></div>
-      <div id="col-tm"></div>
-    </div>
   </div>
-  <div style="margin-top:1.5rem">
-    <div class="ssub">Pr&#243;ximos 14 dias</div>
-    <div class="ug" id="upcoming"></div>
-  </div>
-</div>
 
 <!-- CICLO -->
 <div id="page-ciclo" class="page">
@@ -2567,40 +2557,84 @@ function dBadge(d) {
   return m[d] || "bk";
 }
 
-// ── AGENDA INDEX (DINÂMICO E CORRIGIDO) ────────────────────────
+// ── AGENDA INDEX (LÓGICA BLINDADA DE DEPENDÊNCIAS) ─────────────────
 var agMap = {};
 
-function initAllMaps() {
+window.initAllMaps = function() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
 
-    agMap = {}; // Limpa o mapa antigo para reconstruir com as datas novas
+    agMap = {}; 
 
     allEntries.forEach(function(e) {
-        // Ignora totalmente as matérias pausadas na Agenda
         var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
         if (statusDisc === "pausada") return;
 
         function push(ds, tipo, rn) {
             if (!ds) return;
             if (!agMap[ds]) agMap[ds] = [];
-            agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+            // Evita duplicação absoluta do mesmo tópico no mesmo dia
+            var exists = agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+            if(!exists) agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
         }
 
-        // Usa a data do LocalStorage (replanejada) em vez da data fixa do JSON
         var ud0 = store["e" + e.id + "_r0"] || {};
+        var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
         var studyDate = ud0.date || e.date;
+        
+        // 1. O estudo "Novo" entra sempre no calendário
         push(studyDate, "NOVO", 0);
 
+        // 2. Cascata Inteligente: Revisões futuras ficam bloqueadas/invisíveis
+        var prevStatus = r0Status;
         (e.revs || []).forEach(function(r) {
             var udr = store["e" + e.id + "_r" + r.num] || {};
             var revDate = udr.date || r.date;
-            push(revDate, "REV", r.num);
+            var currStatus = udr.status || "pend";
+
+            // A revisão só ganha vida na agenda se o estudo/revisão ANTERIOR já estiver "ok"
+            // (Ou se ela própria já estiver "ok", para não sumir do histórico)
+            if (prevStatus === "ok" || currStatus === "ok") {
+                push(revDate, "REV", r.num);
+            }
+            
+            // O status desta revisão dita se a próxima vai aparecer
+            prevStatus = currStatus;
         });
     });
-}
+};
+
+// ── RENDERIZAÇÃO DA COLUNA ÚNICA (FOCO TOTAL) ─────────────────
+window.renderCol = function(ds, colId) {
+  var items = agMap[ds] || [];
+  var el = document.getElementById(colId);
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = "<div style='text-align:center;padding:3rem 1rem;font-size:0.85rem;color:var(--ink4);font-weight:600;'>🎉 Nada agendado para este dia! Tira um descanso ou adianta matérias atrasadas.</div>";
+    return;
+  }
+  el.innerHTML = items.map(function(item) { return makeCard(item, lget()); }).join("");
+};
+
+window.renderAgenda3col = function() {
+  var mainDate = agViewDate;
+  
+  // Actualiza os Títulos Dinâmicos
+  var titleStr = "🎯 " + (mainDate === TODAY ? "Hoje" : mainDate < TODAY ? "Histórico Passado" : "Planeamento Futuro");
+  var lbl = document.getElementById("ag-view-title");
+  if(lbl) lbl.innerHTML = titleStr;
+  
+  var dateLbl = document.getElementById("ag-view-date-main");
+  if(dateLbl) dateLbl.textContent = fmtD(mainDate) + " - " + fmtWd(mainDate);
+
+  // Renderiza apenas a coluna central para foco absoluto
+  renderCol(mainDate, "col-td");
+  
+  var topDate = document.getElementById("ag-view-date");
+  if(topDate) topDate.textContent = fmtD(mainDate);
+};
 
 // Recarrega todos os dados visuais
 function reAll() {
