@@ -9860,6 +9860,92 @@ setTimeout(function() {
 
 }, 1200);
 </script>
+<!-- ========================================================================= -->
+<!-- ADESIVO MÁGICO: AGENDA FOCADA (1 COLUNA) E CASCATA DE REVISÕES -->
+<!-- ========================================================================= -->
+<style>
+  /* 1. Transforma o esqueleto de 3 colunas numa única caixa central focada */
+  .ag-3col { 
+      grid-template-columns: 1fr !important; 
+      max-width: 750px !important; 
+      margin: 0 auto !important; 
+      display: block !important;
+  }
+  /* 2. Oculta para sempre as colunas de "Ontem" e "Amanhã" */
+  .acol.yd, .acol.tm { 
+      display: none !important; 
+  }
+  /* 3. Dá um visual premium e destacado à coluna de "Hoje" */
+  .acol.td { 
+      background: var(--bg2) !important; 
+      border: 1px solid var(--brand) !important; 
+      border-radius: 12px !important; 
+      padding: 1.5rem !important; 
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+      margin-bottom: 2rem !important;
+  }
+  .acol.td .acol-lbl { 
+      font-size: 1.3rem !important; 
+      border-bottom: 2px solid var(--bd) !important; 
+      padding-bottom: 0.8rem !important; 
+      margin-bottom: 1.5rem !important; 
+      color: var(--ink) !important;
+  }
+</style>
+
+<script>
+setTimeout(function() {
+    // 4. Injeta a lógica da Cascata (Oculta revisões de matérias não estudadas)
+    window.initAllMaps = function() {
+        // Mantém as outras abas vivas
+        if(typeof rebuildEntryMap === 'function') rebuildEntryMap();
+        if(typeof renderCicloFilters === 'function') renderCicloFilters();
+        
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+        window.agMap = {}; 
+
+        allEntries.forEach(function(e) {
+            var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+            if (statusDisc === "pausada") return;
+
+            function push(ds, tipo, rn) {
+                if (!ds) return;
+                if (!window.agMap[ds]) window.agMap[ds] = [];
+                var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+            }
+
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+            var studyDate = ud0.date || e.date;
+            
+            // O estudo "Novo" entra sempre na agenda
+            push(studyDate, "NOVO", 0);
+
+            // CASCATA INTELIGENTE: A Revisão 1, 2, etc., só aparece se a etapa imediatamente anterior estiver "Feita" (ok)
+            var prevStatus = r0Status;
+            (e.revs || []).forEach(function(r) {
+                var udr = store["e" + e.id + "_r" + r.num] || {};
+                var revDate = udr.date || r.date;
+                var currStatus = udr.status || "pend";
+
+                if (prevStatus === "ok" || currStatus === "ok") {
+                    push(revDate, "REV", r.num);
+                }
+                prevStatus = currStatus;
+            });
+        });
+    };
+
+    // 5. Força o sistema a redesenhar a tela com as novas regras
+    if (typeof reAll === 'function') reAll();
+
+}, 600);
+</script>
   
 </body>
 </html>
