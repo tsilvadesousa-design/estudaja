@@ -10679,6 +10679,192 @@ setTimeout(function() {
         if (typeof renderAgenda === 'function') renderAgenda();
     }
 }, 800);
+<!-- ========================================================================= -->
+<!-- MASTER PATCH DEFINITIVO (REPARA GERENCIAR, IA E AGENDA DE 1 COLUNA) -->
+<!-- ========================================================================= -->
+<style>
+  /* Layout da Agenda em 1 Coluna Focada */
+  .ag-3col { grid-template-columns: 1fr !important; max-width: 750px !important; margin: 0 auto !important; display: block !important; }
+  .acol.yd, .acol.tm { display: none !important; }
+  .acol.td { background: var(--bg2) !important; border: 1px solid var(--brand) !important; border-radius: 12px !important; padding: 1.5rem !important; box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important; margin-bottom: 2rem !important; }
+  .acol.td .acol-lbl { font-size: 1.3rem !important; border-bottom: 2px solid var(--bd) !important; padding-bottom: 0.8rem !important; margin-bottom: 1.5rem !important; color: var(--ink) !important; }
+</style>
+
+<script>
+setTimeout(function() {
+    
+    // 1. REPARA A RENDERIZAÇÃO DAS DISCIPLINAS NA ABA GERENCIAR
+    var originalInitGerenciar = window.initGerenciar;
+    window.initGerenciar = function() {
+        if (typeof originalInitGerenciar === 'function') originalInitGerenciar();
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (store._cicloConfig) {
+            if(document.getElementById("replan-horas-disp")) document.getElementById("replan-horas-disp").value = store._cicloConfig.horasDisponiveis || 20;
+            if(document.getElementById("replan-meta-dias")) document.getElementById("replan-meta-dias").value = store._cicloConfig.metaDias || 80;
+        }
+        if (typeof window.renderDisciplinasInteligente === 'function') window.renderDisciplinasInteligente();
+        if (typeof window.renderVisaoGeral === 'function') window.renderVisaoGeral();
+    };
+
+    // 2. REPARA O BOTÃO DE GERAR CICLO
+    window.gerarPlanoIA = function() {
+        var metaDias = parseInt(document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "80") || 80;
+        var horasSemana = parseInt(document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : "20") || 20;
+
+        try {
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var cicloCfg = store._cicloConfig || {};
+            cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+
+            var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+            var discData = {};
+            var activeDiscs = [];
+            var sumPriorities = 0;
+            var totalPending = 0;
+
+            allEntries.forEach(function(entry) {
+                if (entry.disc) {
+                    var dName = entry.disc;
+                    var cfg = cicloCfg.disciplinas[dName] || { status: "ativa", prioridade: 3 };
+
+                    if (cfg.status === "ativa" || cfg.status === "Ativa") {
+                        if (!discData[dName]) {
+                            activeDiscs.push(dName);
+                            var p = parseInt(cfg.prioridade) || 3;
+                            sumPriorities += p;
+                            discData[dName] = { prio: p, pendingCount: 0, entries: [] };
+                        }
+                        var ud0 = store["e" + entry.id + "_r0"] || {};
+                        if (ud0.status !== "ok") {
+                            discData[dName].pendingCount++;
+                            totalPending++;
+                            discData[dName].entries.push(entry.id);
+                        }
+                    }
+                }
+            });
+
+            var daily = Math.ceil(totalPending / (metaDias > 0 ? metaDias : 1));
+            if (isNaN(daily) || daily < 1) daily = 1;
+
+            activeDiscs.forEach(function(dName) {
+                var data = discData[dName];
+                var peso = sumPriorities > 0 ? (data.prio / sumPriorities) : 1;
+                if (!cicloCfg.disciplinas[dName]) cicloCfg.disciplinas[dName] = { status: "ativa", prioridade: data.prio };
+                cicloCfg.disciplinas[dName].cargaHoraria = Math.max(1, Math.round(horasSemana * peso));
+            });
+
+            cicloCfg.horasDisponiveis = horasSemana;
+            cicloCfg.metaDias = metaDias;
+            store._cicloConfig = cicloCfg;
+
+            var start = new Date().toISOString().split('T')[0];
+            var currentDay = start;
+            var countToday = 0;
+            var pool = [];
+            
+            var maxLen = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
+            for (var i = 0; i < maxLen; i++) {
+                activeDiscs.forEach(function(dName) {
+                    if (discData[dName].entries[i]) pool.push(discData[dName].entries[i]);
+                });
+            }
+
+            var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+
+            pool.forEach(function(eid) {
+                var k0 = "e" + eid + "_r0";
+                var ud0 = store[k0] || {};
+                if (respectManual && ud0._manualDate) return;
+
+                ud0.date = currentDay;
+                store[k0] = ud0;
+                
+                var absDays = (store._revIntervals || "1, 7, 15, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+                if (absDays.length === 0) absDays = [1, 7, 15, 30];
+
+                var e = typeof entryMap !== "undefined" ? entryMap[eid] : allEntries.filter(function(x){return String(x.id)===String(eid);})[0];
+                if (e) {
+                  (e.revs||[]).forEach(function(r, idx) {
+                    var kr = "e" + eid + "_r" + r.num;
+                    var udr = store[kr] || {};
+                    if ((udr.status || "pend") !== "ok") {
+                      var diasParaSomar = 30;
+                      if (idx < absDays.length) { diasParaSomar = absDays[idx]; } else {
+                          var ult = absDays[absDays.length - 1];
+                          var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+                          diasParaSomar = ult + (((ult - pen) > 0 ? (ult - pen) : 30) * (idx - absDays.length + 1));
+                      }
+                      udr.date = addDays(currentDay, diasParaSomar);
+                      store[kr] = udr;
+                    }
+                  });
+                }
+
+                countToday++;
+                if (countToday >= daily) { countToday = 0; currentDay = addDays(currentDay, 1); }
+            });
+
+            lset(store);
+            if(typeof initAllMaps === 'function') initAllMaps();
+            if(typeof toast === 'function') toast("🎯 Plano Gerado e Carga Alocada!");
+            if(typeof reAll === 'function') reAll();
+            if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+        } catch(ex) { alert("Erro ao replanejar: " + ex.message); }
+    };
+
+    // 3. REPARA A CASCATA DE REVISÕES NA AGENDA (ESCONDE AS FUTURAS)
+    window.initAllMaps = function() {
+        if(typeof rebuildEntryMap === 'function') rebuildEntryMap();
+        if(typeof renderCicloFilters === 'function') renderCicloFilters();
+        
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+        window.agMap = {}; 
+
+        allEntries.forEach(function(e) {
+            var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+            if (statusDisc === "pausada") return;
+
+            function push(ds, tipo, rn) {
+                if (!ds) return;
+                if (!window.agMap[ds]) window.agMap[ds] = [];
+                var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+            }
+
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+            
+            // O "Novo" aparece sempre
+            push(ud0.date || e.date, "NOVO", 0);
+
+            // Cascata Inteligente: A revisão só aparece se o passo anterior estiver Feito (ok)
+            var prevStatus = r0Status;
+            (e.revs || []).forEach(function(r) {
+                var udr = store["e" + e.id + "_r" + r.num] || {};
+                var currStatus = udr.status || "pend";
+
+                if (prevStatus === "ok" || currStatus === "ok") {
+                    push(udr.date || r.date, "REV", r.num);
+                }
+                prevStatus = currStatus;
+            });
+        });
+    };
+
+    // Recarrega a view caso a aba gerenciar já esteja aberta
+    var pageAtiva = document.querySelector(".page.active");
+    if (pageAtiva && pageAtiva.id === "page-gerenciar") {
+        window.initGerenciar();
+    }
+    // Força recálculo do calendário com a cascata e a coluna única ativadas
+    if(typeof reAll === 'function') reAll();
+
+}, 800);
 </script>
   
 </body>
