@@ -2564,7 +2564,7 @@ window.initAllMaps = function() {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
-    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+    var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : (typeof ENTRIES !== 'undefined' ? ENTRIES : []);
 
     agMap = {}; 
 
@@ -2575,7 +2575,6 @@ window.initAllMaps = function() {
         function push(ds, tipo, rn) {
             if (!ds) return;
             if (!agMap[ds]) agMap[ds] = [];
-            // Evita duplicação absoluta do mesmo tópico no mesmo dia
             var exists = agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
             if(!exists) agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
         }
@@ -2594,19 +2593,15 @@ window.initAllMaps = function() {
             var revDate = udr.date || r.date;
             var currStatus = udr.status || "pend";
 
-            // A revisão só ganha vida na agenda se o estudo/revisão ANTERIOR já estiver "ok"
-            // (Ou se ela própria já estiver "ok", para não sumir do histórico)
+            // A revisão só aparece se a etapa anterior estiver OK, ou se ela mesma já estiver OK
             if (prevStatus === "ok" || currStatus === "ok") {
                 push(revDate, "REV", r.num);
             }
-            
-            // O status desta revisão dita se a próxima vai aparecer
             prevStatus = currStatus;
         });
     });
 };
 
-// ── RENDERIZAÇÃO DA COLUNA ÚNICA (FOCO TOTAL) ─────────────────
 window.renderCol = function(ds, colId) {
   var items = agMap[ds] || [];
   var el = document.getElementById(colId);
@@ -2620,8 +2615,6 @@ window.renderCol = function(ds, colId) {
 
 window.renderAgenda3col = function() {
   var mainDate = agViewDate;
-  
-  // Actualiza os Títulos Dinâmicos
   var titleStr = "🎯 " + (mainDate === TODAY ? "Hoje" : mainDate < TODAY ? "Histórico Passado" : "Planeamento Futuro");
   var lbl = document.getElementById("ag-view-title");
   if(lbl) lbl.innerHTML = titleStr;
@@ -2629,980 +2622,14 @@ window.renderAgenda3col = function() {
   var dateLbl = document.getElementById("ag-view-date-main");
   if(dateLbl) dateLbl.textContent = fmtD(mainDate) + " - " + fmtWd(mainDate);
 
-  // Renderiza apenas a coluna central para foco absoluto
   renderCol(mainDate, "col-td");
   
   var topDate = document.getElementById("ag-view-date");
   if(topDate) topDate.textContent = fmtD(mainDate);
 };
 
-// Recarrega todos os dados visuais
-function reAll() {
-    initAllMaps();
-    if (typeof renderAgenda === 'function') renderAgenda();
-    if (typeof renderCiclo === 'function') renderCiclo();
-    if (typeof renderDesemp === 'function') renderDesemp();
-    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
-}
-
-// Inicializa a agenda logo no carregamento com as datas atuais e atualizadas
-initAllMaps();
-
-
-// ── CARD HTML ─────────────────────────────────────────────────
-function makeCard(item, store) {
-  var e = entryMap[item.eid] || ENTRIES[item.eid];
-  if (!e) return "";
-  return buildCard(item, e, store);
-}
-// ── ACCUMULATION HELPERS ─────────────────────────────────────
-// Simple: ud.q and ud.a are always running totals. Sessions log is kept separately.
-
-function getTotals(eid, rn) {
-  var ud = getU(eid, rn);
-  if (ud && (ud.q > 0 || ud._init)) {
-    return { q: ud.q || 0, a: ud.a || 0, pct: ud.q ? (ud.a || 0) / ud.q : 0 };
-  }
-  var e = entryMap[eid] || entryMap[String(eid)];
-  if (e && rn === 0 && e.q > 0) {
-    return { q: e.q, a: e.a || 0, pct: e.q ? (e.a || 0) / e.q : 0 };
-  }
-  return { q: 0, a: 0, pct: 0 };
-}
-
-// getSaved: the single function all renders use to get Q/A for an entry
-// Returns the ACCUMULATED total (localStorage overrides base entry data)
-//
-// PERF: aceita opcionalmente um "store" já parseado (evita reprocessar o
-// localStorage inteiro a cada chamada) e consulta diretamente as chaves
-// e{id}_r0..r20 em vez de varrer TODAS as chaves salvas — com centenas de
-// tópicos x até 20 revisões cada, a varredura completa (Object.keys) virava
-// um gargalo O(n²) perceptível ao excluir/editar um tópico.
-var MAX_REVS = 20;
-function getSaved(eid, store) {
-  if (!store) store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  var prefix = "e" + eid + "_r";
-  var totalQ = 0, totalA = 0;
-  var hasAny = false;
-
-  for (var i = 0; i <= MAX_REVS; i++) {
-    var ud = store[prefix + i];
-    if (!ud) continue;
-    hasAny = true;
-    if (ud.q > 0) { totalQ += ud.q; totalA += (ud.a || 0); }
-  }
-
-  // If user has explicitly zeroed this entry, return 0 (don't fallback to spreadsheet)
-  if (hasAny) return { q: totalQ, a: totalA };
-
-  // No user data at all: fallback to spreadsheet base data for display
-  var e = entryMap[eid] || entryMap[String(eid)];
-  if (e && e.q > 0) return { q: e.q, a: e.a || 0 };
-  return { q: 0, a: 0 };
-}
-
-function getSessionTotals(eid, rn, store) {
-  var t = getTotals(eid, rn, store);
-  var ud = getU(eid, rn, store);
-  return { q: t.q, a: t.a, pct: t.pct, sessions: (ud && ud.sessions) || [] };
-}
-
-function addSession(eid, rn, date, newQ, newA, note) {
-  var key = "e" + eid + "_r" + rn;
-  var store = lget();
-  var ud = store[key] || {};
-  // First time adding? Seed from base entry so we don't lose existing data
-  if (!ud.q && rn === 0) {
-    var e = entryMap[eid] || entryMap[String(eid)];
-    if (e && e.q > 0) { ud.q = e.q; ud.a = e.a || 0; }
-  }
-  ud.q = (ud.q || 0) + newQ;
-  ud.a = (ud.a || 0) + newA;
-  if (!ud.sessions) ud.sessions = [];
-  ud.sessions.push({ date: date, q: newQ, a: newA, note: note || "" });
-  ud.date = date;
-  ud.status = ud.status === "skip" ? "ok" : (ud.status || "ok");
-  store[key] = ud;
-  lset(store);
-  console.log("addSession saved:", key, "q="+ud.q, "a="+ud.a);
-  return ud.q ? ud.a / ud.q : 0;
-}
-
-function getTotals(eid, rn, store) {
-  var ud = getU(eid, rn, store);
-  // If no user data yet, fall back to base entry data
-  if (!ud || (!ud.q && !ud._init)) {
-    var e = entryMap[eid] || entryMap[String(eid)];
-    if (e && rn === 0 && e.q > 0) {
-      return { q: e.q, a: e.a || 0, pct: e.q ? (e.a || 0) / e.q : 0 };
-    }
-    return { q: 0, a: 0, pct: 0 };
-  }
-  var q = ud.q || 0;
-  var a = ud.a || 0;
-  return { q: q, a: a, pct: q ? a / q : 0 };
-}
-var REV_GAPS = [1, 6, 13, 10, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 35, 30, 30, 30, 30, 30];
-
-function adaptInterval(baseGap, pct, rn) {
-  // A revisão de 24 horas (R1, que é agendada quando rn === 0)
-  // DEVE ser sempre feita no dia seguinte, não importa quão bem você foi.
-  if (rn === 0) return baseGap; 
-
-  // Lógica de Metas de Acerto (Quanto maior o acerto, maior o espaçamento)
-  if (pct >= 0.90) return Math.round(baseGap * 2.5); // Domínio total: joga a revisão bem pra frente
-  if (pct >= 0.80) return Math.round(baseGap * 1.5); // Ótimo
-  if (pct >= 0.70) return baseGap;                   // Bom/Na meta: mantém o intervalo padrão
-  if (pct >= 0.50) return Math.round(baseGap * 0.7); // Razoável: encurta um pouco para revisar antes
-  return Math.max(1, Math.round(baseGap * 0.4));     // Ruim: joga a revisão pra muito perto (máx 1 dia)
-}
-
-function scheduleNextRev(eid, rn, completedDate, pct) {
-  var nextRn = rn + 1;
-  var e = entryMap[eid] || entryMap[String(eid)];
-  if (!e) return;
-  var totalRevs = (e.revs || []).length;
-  if (nextRn > totalRevs) return;
-  var nextUd = getU(eid, nextRn) || {};
-  if (nextUd.status === "ok") return;
-  var baseGap = REV_GAPS[rn] || 30;
-  var adapted = adaptInterval(baseGap, pct, rn);
-  nextUd.date = addDays(completedDate, adapted);
-  setU(eid, nextRn, nextUd);
-}
-
-function setSt(btn) {
-  var eid = btn.dataset.eid, rn = parseInt(btn.dataset.rn), st = btn.dataset.st;
-  var ud = getU(eid, rn) || {};
-  ud.status = ud.status === st ? "pend" : st;
-  if (ud.status === "ok" && !ud.date) ud.date = TODAY;
-  setU(eid, rn, ud);
-  toast(ud.status === "ok" ? "&#10003; Marcado como feito!" : ud.status === "skip" ? "&#8599; Adiado" : "Pendente");
-  reAll();
-}
-
-function saveEP(btn) {
-  var eid = btn.dataset.eid, rn = parseInt(btn.dataset.rn);
-  var dv = document.getElementById("epd_" + eid + "_" + rn);
-  var qv = document.getElementById("epq_" + eid + "_" + rn);
-  var av = document.getElementById("epa_" + eid + "_" + rn);
-  var nv = document.getElementById("epn_" + eid + "_" + rn);
-  var date = (dv && dv.value) ? dv.value : TODAY;
-  var q = parseInt(qv ? qv.value : 0) || 0;
-  var a = parseInt(av ? av.value : 0) || 0;
-  var note = nv ? nv.value : "";
-  if (q > 0) {
-    var pct = addSession(eid, rn, date, q, a, note);
-    scheduleNextRev(eid, rn, date, pct);
-    var tot = getTotals(eid, rn);
-    toast("&#10003; Adicionado! Total: " + tot.q + "Q / " + tot.a + "A = " + Math.round(tot.pct*100) + "%");
-  } else {
-    var ud2 = getU(eid, rn) || {};
-    if (note) ud2.note = note;
-    setU(eid, rn, ud2);
-    toast("&#10003; Salvo!");
-  }
-  if (qv) qv.value = "";
-  if (av) av.value = "";
-  initAllMaps();
-  reAll();
-}
-
-function delEP(btn) {
-  var eid = btn.dataset.eid, rn = parseInt(btn.dataset.rn);
-  delU(eid, rn);
-  toast("Dados removidos");
-  reAll();
-}
-
-function openMod(btn) {
-  var eid = btn.dataset.eid, rn = parseInt(btn.dataset.rn);
-  var ep = document.getElementById("ep_" + eid + "_" + rn);
-  if (ep) ep.classList.toggle("open");
-}
-
-function openResetModal() {
-  var el = document.getElementById("reset-modal-bg");
-  el.style.display = "flex";
-}
-function closeResetModal() {
-  document.getElementById("reset-modal-bg").style.display = "none";
-}
-function confirmFullReset() {
-  try {
-    localStorage.removeItem("cldf_v2");
-    lset({ _hideBase: true });
-    closeResetModal();
-    initAllMaps();
-    toast("\u2713 Ciclo reiniciado! Disciplinas e dados apagados. Importe um novo edital para come\u00e7ar.");
-    reAll();
-  } catch(ex) {
-    alert("Erro: " + ex.message);
-  }
-}
-
-// ── CICLO INLINE DATE EDITOR ──────────────────────────────────
-var _openDateEditorId = null;
-
-function openDateEditor(eid, currentDate, tdEl) {
-  if (_openDateEditorId && _openDateEditorId !== eid) closeDateEditor(_openDateEditorId);
-  _openDateEditorId = eid;
-  var lbl = document.getElementById("cdl_" + eid);
-  var edit = document.getElementById("cde_" + eid);
-  if (lbl) lbl.style.display = "none";
-  if (edit) edit.style.display = "block";
-}
-
-function closeDateEditor(eid) {
-  var lbl = document.getElementById("cdl_" + eid);
-  var edit = document.getElementById("cde_" + eid);
-  if (lbl) lbl.style.display = "";
-  if (edit) edit.style.display = "none";
-  if (_openDateEditorId === eid) _openDateEditorId = null;
-}
-
-// ==========================================
-// 1. ALTERAÇÃO MANUAL DE DATAS (LÁPIS)
-// ==========================================
-window.saveCicloDate = function(eid, newDate) {
-  if (!newDate) return;
-  try {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var k0 = "e" + eid + "_r0";
-    var ud0 = store[k0] || {};
-    ud0.date = newDate;
-    ud0._manualDate = true;
-    store[k0] = ud0;
-
-    // Puxa as suas regras base (ex: 1, 7, 15, 30)
-    var rawIntervals = store._revIntervals || "1, 7, 15, 30";
-    var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
-    if (absDays.length === 0) absDays = [1, 7, 15, 30];
-
-    var e = entryMap[eid] || getAllEntries().filter(function(x){return String(x.id)===String(eid);})[0];
-    if (e) {
-      (e.revs||[]).forEach(function(r, idx) {
-        var kr = "e" + eid + "_r" + r.num;
-        var udr = store[kr] || {};
-        
-        // Aplica o calendário base apenas às que ainda não foram feitas
-        if ((udr.status || "pend") !== "ok") {
-          var diasParaSomar = 30;
-          if (idx < absDays.length) {
-              diasParaSomar = absDays[idx];
-          } else {
-              var ult = absDays[absDays.length - 1];
-              var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
-              var gap = ult - pen;
-              diasParaSomar = ult + ((gap > 0 ? gap : 30) * (idx - absDays.length + 1));
-          }
-          udr.date = addDays(newDate, diasParaSomar);
-          store[kr] = udr;
-        }
-      });
-    }
-    
-    delete store._rolloverDate;
-    lset(store);
-    closeDateEditor(eid);
-    initAllMaps();
-    if (typeof toast === 'function') toast("✅ Data alterada! Base de revisões ajustada.");
-    reAll();
-  } catch(ex) { alert("Erro ao salvar data: " + ex.message); }
-};
-
-// ==========================================
-// 2. MOTOR DE REPETIÇÃO ESPAÇADA (PORCENTAGEM)
-// ==========================================
-window.adaptInterval = function(baseGap, pct, rn) {
-  // A regra de ouro: A Revisão de 24h (rn = 0) é sagrada. Sempre +1 dia.
-  if (rn === 0) return 1;
-
-  // Para R2, R3 em diante, o desempenho dita o espaçamento:
-  if (pct >= 0.90) return Math.round(baseGap * 2.0); // Sabe muito? Dobra a distância
-  if (pct >= 0.80) return Math.round(baseGap * 1.5); // Sabe bem? +50% de distância
-  if (pct >= 0.70) return baseGap;                   // Sabe o normal? Mantém o padrão (ex: 7 dias)
-  if (pct >= 0.50) return Math.max(1, Math.round(baseGap * 0.6)); // Sabe pouco? Antecipa
-  return Math.max(1, Math.round(baseGap * 0.3));     // Foi mal? Revisa quase imediatamente
-};
-
-// ==========================================
-// 3. AGENDAMENTO AUTOMÁTICO APÓS ESTUDO
-// ==========================================
-window.scheduleNextRev = function(eid, rn, completedDate, pct) {
-  var nextRn = rn + 1;
-  var e = entryMap[eid] || entryMap[String(eid)];
-  if (!e) return;
-  var totalRevs = (e.revs || []).length;
-  if (nextRn > totalRevs) return;
-
-  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  var nextUd = store["e" + eid + "_r" + nextRn] || {};
-  if (nextUd.status === "ok") return;
-
-  var rawIntervals = store._revIntervals || "1, 7, 15, 30";
-  var absDays = rawIntervals.split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
-  if (absDays.length === 0) absDays = [1, 7, 15, 30];
-
-  var gap = 1;
-  if (rn === 0) {
-      gap = absDays[0] || 1; 
-  } else {
-      var atual = absDays[rn - 1] || (rn * 30);
-      var proxima = absDays[rn] || ((rn + 1) * 30);
-      gap = proxima - atual;
-      if (gap <= 0) gap = 30;
-  }
-
-  // Passa o gap pelo Motor de Porcentagem
-  var adaptedGap = window.adaptInterval(gap, pct, rn);
-  nextUd.date = addDays(completedDate, adaptedGap);
-
-  store["e" + eid + "_r" + nextRn] = nextUd;
-  lset(store);
-};
-
-// ── EDITOR INLINE DE OBSERVAÇÃO (direto na tabela do Ciclo) ────
-// Mesmo padrão do editor de data acima: clicar no texto/placeholder
-// abre um campo editável ali mesmo na linha, sem precisar abrir o
-// modal "Editar tópico". Salva no mesmo campo unificado (ud.note)
-// usado em todo o resto do app.
-var _openObsEditorId = null;
-function openCicloObsEditor(eid) {
-  if (_openObsEditorId && _openObsEditorId !== eid) closeCicloObsEditor(_openObsEditorId);
-  _openObsEditorId = eid;
-  var lbl = document.getElementById("cob_" + eid);
-  var edit = document.getElementById("coe_" + eid);
-  if (lbl) lbl.style.display = "none";
-  if (edit) {
-    edit.style.display = "block";
-    var ta = document.getElementById("coi_" + eid);
-    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-  }
-}
-function closeCicloObsEditor(eid) {
-  var lbl = document.getElementById("cob_" + eid);
-  var edit = document.getElementById("coe_" + eid);
-  if (lbl) lbl.style.display = "";
-  if (edit) edit.style.display = "none";
-  if (_openObsEditorId === eid) _openObsEditorId = null;
-}
-function saveCicloObs(eid, newText) {
-  try {
-    var d = lget();
-    var k0 = "e" + eid + "_r0";
-    var ud0 = d[k0] || {};
-    ud0.note = newText;
-    d[k0] = ud0;
-    lset(d);
-    _openObsEditorId = null;
-    toast("\u2713 Observa\u00e7\u00e3o salva!");
-    reAll();
-  } catch(ex) { alert("Erro: " + ex.message); }
-}
-
-// ── ENTRY EDIT MODAL ──────────────────────────────────────────
-var _editEntryId = null;
-/* --- INÍCIO: SISTEMA MODULAR DE MÉTODOS DE CORREÇÃO --- */
-function getGabMethods() {
-  var defaults = [
-    { id: "cebraspe", name: "CEBRASPE (C/E)", builtin: true, correta: 1, errada: -1, branco: 0, anulada: 1 },
-    { id: "um_ponto", name: "Cada questão vale 1 ponto", builtin: true, correta: 1, errada: 0, branco: 0, anulada: 1 }
-  ];
-  try {
-    var stored = JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]");
-    return defaults.concat(stored);
-  } catch(e) { return defaults; }
-}
-
-function renderGabMethodsSelect() {
-  var sel = document.getElementById("gab-method-select");
-  if (!sel) return;
-  var methods = getGabMethods();
-  sel.innerHTML = methods.map(function(m) {
-    return "<option value='" + m.id + "'>" + m.name + "</option>";
-  }).join("");
-}
-
-function showMethodForm() { document.getElementById("gab-method-form").style.display = "block"; }
-function hideMethodForm() { document.getElementById("gab-method-form").style.display = "none"; }
-function toggleMethodsPanel() {
-  var p = document.getElementById("gab-methods-panel");
-  p.style.display = p.style.display === "none" ? "block" : "none";
-  renderGabMethodsList();
-}
-
-function renderGabMethodsList() {
-  var list = document.getElementById("gab-methods-list");
-  var methods = getGabMethods();
-  list.innerHTML = methods.map(function(m) {
-    var delBtn = m.builtin ? "" : "<button onclick='deleteGabMethod(\""+m.id+"\")' style='background:none;border:none;color:var(--red);cursor:pointer'>Excluir</button>";
-    return "<div style='display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--bd)'>" +
-      "<div style='font-size:.75rem'><b>" + m.name + "</b> (C:" + m.correta + " | E:" + m.errada + " | B:" + m.branco + " | A:" + m.anulada + ")</div>" + delBtn + "</div>";
-  }).join("");
-}
-
-function saveMethodForm() {
-  var name = document.getElementById("gm-name").value.trim();
-  if(!name) { alert("Dê um nome ao método"); return; }
-  var c = parseFloat(document.getElementById("gm-correta").value) || 0;
-  var e = parseFloat(document.getElementById("gm-errada").value) || 0;
-  var b = parseFloat(document.getElementById("gm-branco").value) || 0;
-  var a = parseFloat(document.getElementById("gm-anulada").value) || 0;
-  
-  var newMethod = { id: "custom_" + Date.now(), name: name, builtin: false, correta: c, errada: e, branco: b, anulada: a };
-  var stored = JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]");
-  stored.push(newMethod);
-  localStorage.setItem("cldf_gab_methods", JSON.stringify(stored));
-  
-  hideMethodForm();
-  renderGabMethodsSelect();
-  renderGabMethodsList();
-}
-
-function deleteGabMethod(id) {
-  var stored = JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]");
-  stored = stored.filter(function(m) { return m.id !== id; });
-  localStorage.setItem("cldf_gab_methods", JSON.stringify(stored));
-  renderGabMethodsSelect();
-  renderGabMethodsList();
-}
-/* --- FIM: SISTEMA MODULAR DE MÉTODOS DE CORREÇÃO --- */
-function openEntryEditModal(eid) {
-  var e = entryMap[eid] || getAllEntries().filter(function(x){return String(x.id)===String(eid);})[0];
-  if (!e) return;
-  _editEntryId = eid;
-  var existing = document.getElementById("entry-edit-modal");
-  if (existing) existing.remove();
-
-  // Load saved extra fields
-  var store = JSON.parse(localStorage.getItem("cldf_v2")||"{}");
-  var ud = store["e"+eid+"_r0"] || {};
-  var savedObs   = ud.note || ud._obs || "";
-  var savedMat   = ud._material || [];
-  var savedLinks = ud._links || "";
-
-  var MATERIALS = ["Passo Estrat\u00e9gico","PDF","Videoaula","Quest\u00f5es","Resumo","Revis\u00e3o","Flashcard"];
-
-  var matChecks = MATERIALS.map(function(m) {
-    var checked = savedMat.indexOf(m) >= 0 ? "checked" : "";
-    var safeId = "ee-mat-" + m.replace(/\s/g,"-").replace(/\u00e3/g,"a").replace(/\u00f5/g,"o");
-    return "<label style='display:flex;align-items:center;gap:.35rem;font-size:.77rem;cursor:pointer'>" +
-      "<input type='checkbox' id='" + safeId + "' value='" + m + "' " + checked + " style='accent-color:var(--green);width:14px;height:14px'>" +
-      m + "</label>";
-  }).join("");
-
-  var modal = document.createElement("div");
-  modal.id = "entry-edit-modal";
-  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:9997;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto";
-  modal.innerHTML =
-    "<div style='background:var(--bg2);border:1px solid var(--bd);border-radius:14px;padding:1.5rem;width:100%;max-width:500px;box-shadow:0 24px 80px rgba(0,0,0,.6);my:1rem'>" +
-    "<h3 style='font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink)'>\u270F\uFE0F Editar T\u00f3pico</h3>" +
-    "<div style='display:flex;flex-direction:column;gap:.7rem;margin-bottom:1.1rem'>" +
-      // Disciplina
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>Disciplina *</div>" +
-        "<input id='ee-disc' class='minp' type='text' value='" + (e.disc||"").replace(/'/g,"\\'") + "'></div>" +
-      // Tópico
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>T\u00f3pico</div>" +
-        "<input id='ee-topico' class='minp' type='text' value='" + (e.topico||"").replace(/'/g,"\\'") + "'></div>" +
-      // Assunto
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>Assunto</div>" +
-        "<input id='ee-assunto' class='minp' type='text' value='" + (e.assunto||"").replace(/'/g,"\\'") + "'></div>" +
-      // Subtópico
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>Subt\u00f3pico</div>" +
-        "<input id='ee-sub' class='minp' type='text' value='" + (e.sub||"").replace(/'/g,"\\'") + "' placeholder='Ex: Princ\u00edpios expl\u00edcitos'></div>" +
-      // Material utilizado
-      "<div>" +
-        "<div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.5rem'>Material Utilizado</div>" +
-        "<div id='ee-materials' style='display:grid;grid-template-columns:1fr 1fr;gap:.35rem .6rem'>" + matChecks + "</div>" +
-      "</div>" +
-      // Observações
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>Observa\u00e7\u00f5es</div>" +
-        "<textarea id='ee-obs' class='minp' rows='3' style='resize:vertical;font-family:var(--ff);font-size:.8rem' placeholder='Anota\u00e7\u00f5es, pontos de aten\u00e7\u00e3o, d\u00favidas...'>" + savedObs.replace(/</g,"&lt;") + "</textarea></div>" +
-      // Links
-      "<div><div style='font-family:var(--fm);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink4);margin-bottom:.2rem'>Links do Material</div>" +
-        "<textarea id='ee-links' class='minp' rows='3' style='resize:vertical;font-family:var(--fm);font-size:.72rem' placeholder='https://...&#10;https://... (um link por linha)'>" + savedLinks.replace(/</g,"&lt;") + "</textarea>" +
-        "<div style='font-size:.65rem;color:var(--ink4);margin-top:.2rem'>Um link por linha. Aparecer\u00e3o clicáveis no Ciclo.</div>" +
-      "</div>" +
-    "</div>" +
-    "<div style='display:flex;gap:.5rem;flex-wrap:wrap'>" +
-      "<button class='btn-p' onclick='saveEntryEdit()' style='flex:1'>Salvar</button>" +
-      (e.custom ? "<button class='btn-s' style='color:var(--red);border-color:var(--red)' onclick='deleteEntry("+eid+")'>Apagar</button>" : "") +
-      "<button class='btn-s' onclick='closeEntryEditModal()'>Cancelar</button>" +
-    "</div>" +
-    (e.custom ? "" : "<div style='font-size:.65rem;color:var(--ink4);margin-top:.5rem'>&#9432; T\u00f3picos originais n\u00e3o podem ser apagados, apenas editados.</div>") +
-    "</div>";
-  document.body.appendChild(modal);
-  modal.addEventListener("click", function(ev){ if(ev.target===modal) closeEntryEditModal(); });
-}
-
-function closeEntryEditModal() {
-  var m = document.getElementById("entry-edit-modal");
-  if (m) m.remove();
-  _editEntryId = null;
-}
-
-function saveEntryEdit() {
-  if (!_editEntryId) return;
-  var disc    = (document.getElementById("ee-disc")    ? document.getElementById("ee-disc").value    : "").trim();
-  var topico  = (document.getElementById("ee-topico")  ? document.getElementById("ee-topico").value  : "").trim();
-  var assunto = (document.getElementById("ee-assunto") ? document.getElementById("ee-assunto").value : "").trim();
-  var sub     = (document.getElementById("ee-sub")     ? document.getElementById("ee-sub").value     : "").trim();
-  var obs     = (document.getElementById("ee-obs")     ? document.getElementById("ee-obs").value     : "").trim();
-  var links   = (document.getElementById("ee-links")   ? document.getElementById("ee-links").value   : "").trim();
-
-  // Collect checked materials
-  var mats = [];
-  var MATERIALS = ["Passo Estrat\u00e9gico","PDF","Videoaula","Quest\u00f5es","Resumo","Revis\u00e3o","Flashcard"];
-  MATERIALS.forEach(function(m) {
-    var safeId = "ee-mat-" + m.replace(/\s/g,"-").replace(/\u00e3/g,"a").replace(/\u00f5/g,"o");
-    var cb = document.getElementById(safeId);
-    if (cb && cb.checked) mats.push(m);
-  });
-
-  if (!disc) { toast("\u26a0 A Disciplina \u00e9 obrigat\u00f3ria"); return; }
-
-  // Save name overrides to localStorage for all entries (custom or base)
-  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  var k = "e" + _editEntryId + "_r0";
-  var ud = store[k] || {};
-  ud._disc = disc; ud._topico = topico; ud._assunto = assunto; ud._sub = sub;
-  ud.note = obs; ud._material = mats; ud._links = links;
-  store[k] = ud;
-  lset(store);
-
-  // Also update custom entry fields if applicable
-  var ce = getCustomEntries();
-  var idx = ce.findIndex(function(e){ return String(e.id) === String(_editEntryId); });
-  if (idx >= 0) {
-    ce[idx].disc = disc; ce[idx].topico = topico;
-    ce[idx].assunto = assunto; ce[idx].sub = sub;
-    saveCustomEntries(ce);
-  }
-
-  closeEntryEditModal();
-  initAllMaps();
-  toast("\u2713 Salvo!");
-  reAll();
-}
-
-function deleteEntry(eid) {
-  var ce = getCustomEntries();
-  var idx = ce.findIndex(function(e){return String(e.id)===String(eid);});
-  if (idx < 0) { toast("\u26a0 S\u00f3 t\u00f3picos adicionados manualmente podem ser apagados."); closeEntryEditModal(); return; }
-  ce.splice(idx,1);
-  saveCustomEntries(ce);
-  var store = JSON.parse(localStorage.getItem("cldf_v2")||"{}");
-  Object.keys(store).forEach(function(k){ if(k.indexOf("e"+eid+"_r")===0) delete store[k]; });
-  lset(store);
-  closeEntryEditModal();
-  initAllMaps();
-  toast("\u2713 T\u00f3pico removido");
-  reAll();
-}
-
-function quickResetTopic(eid) {
-  var e = entryMap[eid] || getAllEntries().filter(function(x){ return x.id == eid; })[0];
-  if (!e) return;
-  try {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    // Write explicit zeros instead of deleting — prevents fallback to spreadsheet data
-    store["e" + eid + "_r0"] = { q: 0, a: 0, sessions: [], status: "pend", date: e.date, _zeroed: true };
-    (e.revs || []).forEach(function(r) {
-      store["e" + eid + "_r" + r.num] = { q: 0, a: 0, sessions: [], status: "pend", date: r.date, _zeroed: true };
-    });
-    lset(store);
-    initAllMaps();
-    toast("\u2713 " + (e.topico || e.assunto) + " zerado!");
-    reAll();
-  } catch(ex) {
-    alert("Erro: " + ex.message);
-  }
-}
-
-function resetTopicData() {
-  if (!_mk) return;
-  var eid = _mk.eid, rn = _mk.rn;
-  var e = entryMap[eid] || getAllEntries().filter(function(x){ return x.id == eid; })[0];
-  var name = e ? (e.topico || e.assunto) : "tópico";
-  var what = rn === 0 ? "estudo e todas as revisões" : "Rev " + rn;
-
-  // No confirm() dialog — just do it with a toast
-  try {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-
-    if (rn === 0) {
-      // Zero study AND all revisions
-      store["e" + eid + "_r0"] = { q: 0, a: 0, sessions: [], status: "pend", date: e ? e.date : TODAY, _zeroed: true };
-      (e ? e.revs || [] : []).forEach(function(r) {
-        store["e" + eid + "_r" + r.num] = { q: 0, a: 0, sessions: [], status: "pend", date: r.date, _zeroed: true };
-      });
-    } else {
-      // Zero just this revision
-      var baseRev = e ? (e.revs || []).filter(function(r){ return r.num === rn; })[0] : null;
-      store["e" + eid + "_r" + rn] = { q: 0, a: 0, sessions: [], status: "pend", date: baseRev ? baseRev.date : TODAY, _zeroed: true };
-    }
-
-    lset(store);
-    closeModal();
-    initAllMaps();
-    toast("\u2713 " + name + " (" + what + ") zerado com sucesso!");
-    reAll();
-  } catch(ex) {
-    alert("Erro: " + ex.message);
-  }
-}
-
-// ── MODAL (full edit) ─────────────────────────────────────────
-var _mk = null, _ms = "pend", _mmode = "edit";
-
-function setMMode(mode) {
-  _mmode = mode;
-  var isEdit = mode === "edit";
-  document.getElementById("m-mode-edit").className = "cbtn" + (isEdit ? " c-ok" : "");
-  document.getElementById("m-mode-add").className  = "cbtn" + (!isEdit ? " c-ok" : "");
-  document.getElementById("m-q-lbl").textContent = isEdit ? "Quest\u00f5es (total)" : "+ Quest\u00f5es";
-  document.getElementById("m-a-lbl").textContent = isEdit ? "Acertos (total)" : "+ Acertos";
-  document.getElementById("m-date-lbl").textContent = isEdit ? "Data do estudo" : "Data da sess\u00e3o";
-  document.getElementById("m-history").style.display = isEdit ? "none" : (_mk && (getU(_mk.eid, _mk.rn)||{}).sessions && (getU(_mk.eid, _mk.rn)||{}).sessions.length > 0 ? "block" : "none");
-  document.getElementById("m-current").style.display = isEdit ? "block" : "none";
-  // In edit mode: fill with current totals. In add mode: clear fields
-  if (_mk) {
-    var ud = getU(_mk.eid, _mk.rn) || {};
-    var e = entryMap[_mk.eid] || ENTRIES.filter(function(x){ return x.id == _mk.eid; })[0] || {};
-    if (isEdit) {
-      var curQ = ud.q || e.q || 0;
-      var curA = ud.a || e.a || 0;
-      document.getElementById("m-q").value = curQ || "";
-      document.getElementById("m-a").value = curA || "";
-      document.getElementById("m-date").value = ud.date || e.date || TODAY;
-      var pct = curQ ? Math.round(curA/curQ*100) + "%" : "--";
-      document.getElementById("m-current").innerHTML =
-        "<span style='color:var(--ink3);font-size:.7rem'>Valores atuais: </span>" +
-        "<strong>" + curQ + "Q / " + curA + "A = " + pct + "</strong>" +
-        "<span style='color:var(--ink3);font-size:.68rem'> (ser\u00e3o substitu\u00eddos)</span>";
-    } else {
-      document.getElementById("m-q").value = "";
-      document.getElementById("m-a").value = "";
-      document.getElementById("m-date").value = TODAY;
-    }
-  }
-}
-
-function openModal(eid, rn) {
-  _mk = { eid: eid, rn: rn };
-  var e = entryMap[eid] || ENTRIES.filter(function(x) { return x.id == eid; })[0];
-  if (!e) return;
-  var ud = getU(eid, rn) || {};
-  var totsSessions = ud.sessions || [];
-
-  document.getElementById("modal-t").textContent =
-    (rn === 0 ? "Editar: " : "Rev " + rn + ": ") + (e.topico || e.assunto);
-
-  // Session history for add mode
-  var histEl = document.getElementById("m-history");
-  if (histEl && totsSessions.length > 0) {
-    var histHtml = "<div style='font-family:monospace;font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;color:var(--ink3);margin-bottom:.4rem'>Sess\u00f5es anteriores</div>";
-    histHtml += totsSessions.map(function(s) {
-      var sp = s.q ? Math.round(s.a/s.q*100) + "%" : "";
-      return "<div style='display:flex;gap:.5rem;align-items:center;padding:.18rem 0;border-bottom:1px solid var(--bd2);font-size:.75rem'>" +
-        "<span style='font-family:monospace;color:var(--ink3);min-width:60px'>" + fmtD(s.date) + "</span>" +
-        "<span>" + s.q + "Q / " + s.a + "A</span>" +
-        (sp ? "<span class='badge " + (s.a/s.q>=0.8?"bg":s.a/s.q>=0.6?"ba":"br") + "'>" + sp + "</span>" : "") +
-        (s.note ? "<span style='color:var(--ink3);font-size:.7rem'>" + s.note + "</span>" : "") +
-        "</div>";
-    }).join("");
-    histEl.innerHTML = histHtml;
-  }
-
-  document.getElementById("m-note").value = ud.note || "";
-  _ms = ud.status || "pend";
-  updMBtns();
-  // Default to edit mode
-  _mmode = "edit";
-  setMMode("edit");
-  document.getElementById("modal-bg").classList.add("open");
-}
-function setMS(s) { _ms = s; updMBtns(); }
-function updMBtns() {
-  ["ok","skip","pend"].forEach(function(s) {
-    var b = document.getElementById("ms-" + s);
-    b.className = "cbtn" + (s === _ms ? " c-" + s : "");
-  });
-}
-function closeModal() {
-  document.getElementById("modal-bg").classList.remove("open");
-  _mk = null;
-}
-// ── CONCLUSÃO DE CICLO (20ª revisão) ────────────────────────────
-// Quando a última revisão (R20) de um tópico é marcada como feita,
-// registra essa conclusão num histórico permanente (pra você acompanhar
-// quantas vezes já fechou o ciclo de cada tópico) e reinicia o tópico
-// do zero, com uma agenda nova a partir de amanhã, pra ele continuar
-// entrando no seu ciclo de revisões indefinidamente.
-function logTopicCompletion(eid) {
-  var e = entryMap[eid] || getAllEntries().filter(function(x){ return String(x.id) === String(eid); })[0];
-  if (!e) return null;
-  var d = lget();
-  if (!d._completions) d._completions = [];
-  var priorCount = d._completions.filter(function(c){ return String(c.eid) === String(eid); }).length;
-  var entry = {
-    eid: eid,
-    disc: e.disc,
-    topico: e.topico || e.assunto,
-    sub: e.sub || "",
-    date: TODAY,
-    cycleNum: priorCount + 1
-  };
-  d._completions.push(entry);
-  lset(d);
-  return entry;
-}
-
-function restartTopicCycle(eid) {
-  var d = lget();
-  var newStart = addDays(TODAY, 1);
-  d["e" + eid + "_r0"] = { q: 0, a: 0, sessions: [], status: "pend", date: newStart };
-  for (var i = 0; i < MAX_REVS; i++) {
-    var interval = REV_INTERVALS[i] !== undefined ? REV_INTERVALS[i] : (i + 1) * 30;
-    d["e" + eid + "_r" + (i + 1)] = { q: 0, a: 0, sessions: [], status: "pend", date: addDays(newStart, interval) };
-  }
-  lset(d);
-}
-
-// Chame logo após gravar uma revisão como "ok". Se for a última (R20),
-// registra e reinicia o ciclo automaticamente, retornando os dados da
-// conclusão (ou null se não era a última revisão).
-function checkCycleCompletion(eid, rn, status) {
-  if (rn !== MAX_REVS || status !== "ok") return null;
-  var completion = logTopicCompletion(eid);
-  restartTopicCycle(eid);
-  return completion;
-}
-
-function saveModal() {
-  if (!_mk) return;
-  var eid = _mk.eid, rn = _mk.rn;
-  var date = document.getElementById("m-date").value || TODAY;
-  var q = parseInt(document.getElementById("m-q").value) || 0;
-  var a = parseInt(document.getElementById("m-a").value) || 0;
-  var note = document.getElementById("m-note").value;
-  var key = "e" + eid + "_r" + rn;
-  var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-  var ud = store[key] || {};
-  // Só marca a data como "manual" se ela de fato mudou em relação ao
-  // que já estava salvo — assim confirmar a sessão do dia normalmente
-  // (sem tocar na data) não trava esse tópico contra recalculadas
-  // futuras do ciclo; só uma mudança de data real conta como manual.
-  var dateChanged = date !== (ud.date || "");
-
-  if (_mmode === "edit") {
-    // REPLACE: set values directly
-    if (q > 0) {
-      // Keep sessions log but update totals
-      if (!ud.sessions) ud.sessions = [];
-      // Add an edit-log entry
-      ud.sessions.push({ date: date, q: q, a: a, note: note || "(edi\u00e7\u00e3o direta)", _edit: true });
-      ud.q = q;
-      ud.a = a;
-    }
-    ud.date = date;
-    if (dateChanged) ud._manualDate = true;
-    ud.status = q > 0 ? "ok" : _ms;
-    if (note) ud.note = note;
-    store[key] = ud;
-    lset(store);
-    var pct = q ? Math.round(a/q*100) : 0;
-    var completion1 = checkCycleCompletion(eid, rn, ud.status);
-    closeModal(); initAllMaps();
-    if (completion1) {
-      toast("\ud83c\udfc6 Ciclo completo! " + (completion1.topico) + " \u2014 " + completion1.cycleNum + "\u00aa vez. Reiniciado automaticamente.");
-    } else {
-      toast("\u2713 Salvo: " + q + "Q / " + a + "A = " + pct + "%");
-    }
-    reAll();
-  } else {
-    // ADD SESSION: accumulate
-    if (q > 0) {
-      // Seed from base entry if first time
-      if (!ud.q) {
-        for (var i = 0; i < ENTRIES.length; i++) {
-          if (String(ENTRIES[i].id) === String(eid)) {
-            if (ENTRIES[i].q > 0) { ud.q = ENTRIES[i].q; ud.a = ENTRIES[i].a || 0; }
-            break;
-          }
-        }
-      }
-      ud.q = (ud.q || 0) + q;
-      ud.a = (ud.a || 0) + a;
-      if (!ud.sessions) ud.sessions = [];
-      ud.sessions.push({ date: date, q: q, a: a, note: note });
-      ud.date = date;
-      if (dateChanged) ud._manualDate = true;
-      ud.status = "ok";
-      if (note) ud.note = note;
-      store[key] = ud;
-      lset(store);
-      var completion2 = checkCycleCompletion(eid, rn, ud.status);
-      closeModal(); initAllMaps();
-      if (completion2) {
-        toast("\ud83c\udfc6 Ciclo completo! " + (completion2.topico) + " \u2014 " + completion2.cycleNum + "\u00aa vez. Reiniciado automaticamente.");
-      } else {
-        toast("\u2713 Adicionado! Total: " + ud.q + "Q / " + ud.a + "A = " + Math.round(ud.q ? ud.a/ud.q*100 : 0) + "%");
-      }
-      reAll();
-    } else {
-      // No questions - just update status/note/date
-      ud.status = _ms;
-      ud.date = date;
-      if (dateChanged) ud._manualDate = true;
-      if (note) ud.note = note;
-      store[key] = ud;
-      lset(store);
-      var completion3 = checkCycleCompletion(eid, rn, ud.status);
-      closeModal(); initAllMaps();
-      if (completion3) {
-        toast("\ud83c\udfc6 Ciclo completo! " + (completion3.topico) + " \u2014 " + completion3.cycleNum + "\u00aa vez. Reiniciado automaticamente.");
-      } else {
-        toast("\u2713 Status atualizado");
-      }
-      reAll();
-    }
-  }
-}
-
-// ── AGENDA FILTERS ────────────────────────────────────────────
-var agFilters = { tipo: "", status: "", disc: "", search: "" };
-var agViewDate = TODAY; // centre date for 3-col view
-
-function setAgF(btn) {
-  var f = btn.dataset.f, v = btn.dataset.v;
-  agFilters[f] = v;
-  // deactivate siblings, activate this
-  document.querySelectorAll(".af-chip[data-f='" + f + "']").forEach(function(b) {
-    b.classList.remove("active");
-  });
-  btn.classList.add("active");
-  applyAgFilters();
-}
-
-function applyAgFilters() {
-  agFilters.disc = (document.getElementById("ag-disc-f").value || "");
-  agFilters.search = (document.getElementById("ag-search").value || "").toLowerCase().trim();
-  var isFiltered = agFilters.tipo || agFilters.status || agFilters.disc || agFilters.search;
-  var a3 = document.querySelector(".a3");
-  var flat = document.getElementById("ag-flat-view");
-
-  if (isFiltered) {
-    a3.style.display = "none";
-    if (!flat) { flat = document.createElement("div"); flat.id = "ag-flat-view"; flat.className = "ag-flat"; a3.parentNode.insertBefore(flat, a3.nextSibling); }
-    renderFlatView(flat);
-  } else {
-    a3.style.display = "";
-    if (flat) flat.innerHTML = "";
-    renderAgenda3col();
-  }
-}
-
-function matchesFilters(item, store) {
-  var e = entryMap[item.eid];
-  if (!e) return false;
-  var ud = store || lget();
-  var u = ud[ukey(item.eid, item.rn)];
-  var status = u ? (u.status || "pend") : (e.ok === "\u2705" && item.rn === 0 ? "ok" : "pend");
-
-  if (agFilters.tipo && item.tipo !== agFilters.tipo) return false;
-  if (agFilters.status && status !== agFilters.status) return false;
-  if (agFilters.disc && e.disc !== agFilters.disc) return false;
-  if (agFilters.search) {
-    var hay = (e.disc + " " + e.topico + " " + e.assunto + " " + (e.sub||"")).toLowerCase();
-    if (hay.indexOf(agFilters.search) < 0) return false;
-  }
-  return true;
-}
-
-function renderFlatView(container) {
-  // Faz o parse do localStorage UMA VEZ só e reaproveita pra cada item,
-  // em vez de reprocessar tudo de novo a cada chamada de matchesFilters
-  // — com milhares de itens (tópicos × revisões ao longo dos anos),
-  // repetir o parse pra cada um travava o filtro por vários segundos.
-  var store = lget();
-  // Collect all agenda items from all dates, sorted
-  var allDates = Object.keys(agMap).sort();
-  var html = "";
-  var count = 0;
-  allDates.forEach(function(ds) {
-    var items = (agMap[ds] || []).filter(function(item) { return matchesFilters(item, store); });
-    if (!items.length) return;
-    count += items.length;
-    html += "<div class='ag-flat-date'>" + fmtD(ds) + " &nbsp; " + fmtWd(ds) +
-      " <span style='color:var(--ink3);font-weight:400'>(" + items.length + ")</span></div>";
-    html += items.map(function(item) { return makeCard(item, store); }).join("");
-  });
-  container.innerHTML = count
-    ? html
-    : "<div class='ag-empty'>Nenhum item encontrado com os filtros selecionados.</div>";
-}
-
-function initAgDiscFilter() {
-  var sel = document.getElementById("ag-disc-f");
-  if (!sel) return;
-  var cur = sel.value;
-  sel.innerHTML = "<option value=''>Todas</option>";
-  var allDiscs = getAllEntries().map(function(e) { return e.disc; });
-  allDiscs.filter(function(d, i) { return allDiscs.indexOf(d) === i && d; }).forEach(function(d) {
-    var opt = document.createElement("option");
-    opt.value = d; opt.textContent = d;
-    if (d === cur) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-
-function agNav(delta) {
-  agViewDate = addDays(agViewDate, delta);
-  agFilters = { tipo: "", status: "", disc: "", search: "" };
-  // Reset chips
-  document.querySelectorAll(".af-chip").forEach(function(b) {
-    b.classList.toggle("active", b.dataset.v === "");
-  });
-  if (document.getElementById("ag-disc-f")) document.getElementById("ag-disc-f").value = "";
-  if (document.getElementById("ag-search")) document.getElementById("ag-search").value = "";
-  var flat = document.getElementById("ag-flat-view");
-  if (flat) flat.innerHTML = "";
-  document.querySelector(".a3").style.display = "";
-  renderAgenda3col();
-  document.getElementById("ag-view-date").textContent = fmtD(agViewDate) + " " + fmtWd(agViewDate);
-}
-
-function agGoToday() {
-  agViewDate = TODAY;
-  agNav(0);
-}
-
-// ── RENDER AGENDA ─────────────────────────────────────────────
-function renderCol(ds, colId) {
-  var items = agMap[ds] || [];
-  var el = document.getElementById(colId);
-  if (!items.length) {
-    el.innerHTML = "<div style='text-align:center;padding:2rem 1rem;font-size:.7rem;color:var(--ink3)'>Nenhum item</div>";
-    return;
-  }
-  el.innerHTML = items.map(makeCard).join("");
-}
-
-function renderAgenda3col() {
-  var yd = addDays(agViewDate, -1), tm = addDays(agViewDate, 1);
-  document.getElementById("lbl-yd").textContent = fmtD(yd);
-  document.getElementById("lbl-td").textContent = fmtD(agViewDate);
-  document.getElementById("lbl-tm").textContent = fmtD(tm);
-  renderCol(yd, "col-yd");
-  renderCol(agViewDate, "col-td");
-  renderCol(tm, "col-tm");
-  document.getElementById("ag-view-date").textContent = fmtD(agViewDate) + " " + fmtWd(agViewDate);
-}
-
-function renderAgenda() {
-  initAgDiscFilter();
+window.renderAgenda = function() {
+  if(typeof initAgDiscFilter === 'function') initAgDiscFilter();
   renderAgenda3col();
 
   var ti = agMap[TODAY] || [];
@@ -3615,11 +2642,9 @@ function renderAgenda() {
     return u && u.status === "ok";
   }).length;
 
-  // -- CÁLCULO DE GAMIFICAÇÃO E STREAK (DIAS SEGUIDos) --
   var totalHoje = ti.length;
   var pctHoje = totalHoje > 0 ? Math.round((done / totalHoje) * 100) : 0;
   
-  // Calcula streak verificando o histórico recente no storage
   var streak = 0;
   var checkDate = TODAY;
   for (var st = 0; st < 30; st++) {
@@ -3636,24 +2661,18 @@ function renderAgenda() {
       streak++;
       checkDate = addDays(checkDate, -1);
     } else if (st === 0) {
-      // Se hoje ainda não completou, olha o ontem para não quebrar a corrente
       checkDate = addDays(checkDate, -1);
     } else {
       break;
     }
   }
-  // -- FIM DA GAMIFICAÇÃO --
 
   var tq = 0, ta = 0, sc = 0;
   getAllEntries().forEach(function(e) {
-    var u = ud[ukey(e.id, 0)];
     var _t = getSaved(e.id, ud);
-    var q = _t.q;
-    var a = _t.a;
-    if (q) { tq += q; ta += (a||0); sc++; }
+    if (_t.q) { tq += _t.q; ta += (_t.a||0); sc++; }
   });
 
-  // Renderiza os Stats turbinados com a Barra de Progresso e o Streak
   var progressHtml = 
     "<div style='grid-column: 1 / -1; background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--radius); padding: 1.1rem 1.4rem; display: flex; flex-direction: column; gap: .6rem; box-shadow: var(--shadow);'>" +
       "<div style='display: flex; justify-content: space-between; align-items: center;'>" +
@@ -3668,17 +2687,19 @@ function renderAgenda() {
       "</div>" +
     "</div>";
 
-  document.getElementById("ag-stats").innerHTML =
-    progressHtml +
-    "<div class='sb'><div class='sn'>" + totalHoje + "</div><div class='sl'>Itens hoje</div></div>" +
-    "<div class='sb'><div class='sn'>" + novos + "</div><div class='sl'>Novo estudo</div></div>" +
-    "<div class='sb b'><div class='sn'>" + revs + "</div><div class='sl'>Revis&#245;es</div></div>" +
-    "<div class='sb a'><div class='sn'>" + done + "</div><div class='sl'>Feitos hoje</div></div>" +
-    "<div class='sb'><div class='sn'>" + sc + "</div><div class='sl'>T&#243;picos estudados</div></div>" +
-    "<div class='sb a'><div class='sn'>" + (tq ? Math.round(ta/tq*100) : 0) + "%</div><div class='sl'>Taxa acerto</div></div>";
+  var agStats = document.getElementById("ag-stats");
+  if(agStats) {
+      agStats.innerHTML =
+        progressHtml +
+        "<div class='sb'><div class='sn'>" + totalHoje + "</div><div class='sl'>Itens hoje</div></div>" +
+        "<div class='sb'><div class='sn'>" + novos + "</div><div class='sl'>Novo estudo</div></div>" +
+        "<div class='sb b'><div class='sn'>" + revs + "</div><div class='sl'>Revisões</div></div>" +
+        "<div class='sb a'><div class='sn'>" + done + "</div><div class='sl'>Feitos hoje</div></div>" +
+        "<div class='sb'><div class='sn'>" + sc + "</div><div class='sl'>Tópicos estudados</div></div>" +
+        "<div class='sb a'><div class='sn'>" + (tq ? Math.round(ta/tq*100) : 0) + "%</div><div class='sl'>Taxa acerto</div></div>";
+  }
 
-  // upcoming — use entryMap not ENTRIES[]
-  var ug = "";
+  var ugHtml = "";
   for (var i = 1; i <= 14; i++) {
     var ds = addDays(TODAY, i);
     var its = agMap[ds] || [];
@@ -3693,29 +2714,31 @@ function renderAgenda() {
       var e = entryMap[x.eid]; if (!e) return "";
       return "<div class='uc-r'><span class='badge ba' style='font-size:.48rem;padding:.06rem .25rem'>R" + x.rn + "</span> " + e.disc + "</div>";
     }).join("");
-    if (rv.length > 2) rows += "<div class='uc-r' style='color:var(--ink3);font-size:.62rem'>+" + (rv.length-2) + " revis&#245;es</div>";
-    ug += "<div class='uc' onclick='agNavTo(\"" + ds + "\")' style='cursor:pointer'>" +
+    if (rv.length > 2) rows += "<div class='uc-r' style='color:var(--ink3);font-size:.62rem'>+" + (rv.length-2) + " revisões</div>";
+    ugHtml += "<div class='uc' onclick='agNavTo(\"" + ds + "\")' style='cursor:pointer'>" +
       "<div class='uc-dt'>" + fmtD(ds) + " &middot; " + fmtWd(ds) + "</div>" +
       "<div class='uc-n'>" + its.length + "</div><div class='uc-l'>" + (its.length===1?"item":"itens") + "</div><div>" + rows + "</div></div>";
   }
-  document.getElementById("upcoming").innerHTML = ug ||
-    "<div style='color:var(--ink3);font-size:.7rem'>Sem itens nos pr&#243;ximos 14 dias</div>";
-}
-function agNavTo(ds) {
+  var upcomingEl = document.getElementById("upcoming");
+  if(upcomingEl) {
+      upcomingEl.innerHTML = ugHtml || "<div style='color:var(--ink3);font-size:.7rem'>Sem itens agendados</div>";
+  }
+};
+
+window.agNavTo = function(ds) {
   agViewDate = ds;
-  // clear filters
   agFilters = { tipo: "", status: "", disc: "", search: "" };
   document.querySelectorAll(".af-chip").forEach(function(b) { b.classList.toggle("active", b.dataset.v === ""); });
   if (document.getElementById("ag-disc-f")) document.getElementById("ag-disc-f").value = "";
   if (document.getElementById("ag-search")) document.getElementById("ag-search").value = "";
   var flat = document.getElementById("ag-flat-view");
   if (flat) flat.innerHTML = "";
-  document.querySelector(".a3").style.display = "";
+  var a3 = document.querySelector(".a3");
+  if(a3) a3.style.display = "";
   renderAgenda3col();
-  document.getElementById("ag-view-date").textContent = fmtD(agViewDate) + " " + fmtWd(agViewDate);
-  document.getElementById("page-agenda").scrollIntoView({ behavior: "smooth" });
-}
-
+  var pageAg = document.getElementById("page-agenda");
+  if(pageAg) pageAg.scrollIntoView({ behavior: "smooth" });
+};
 // ── CICLO ─────────────────────────────────────────────────────
 var _df = "";
 function setDF(idx, btn) {
