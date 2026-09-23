@@ -10865,6 +10865,65 @@ setTimeout(function() {
     if(typeof reAll === 'function') reAll();
 
 }, 800);
+<!-- ========================================================================= -->
+<!-- ADESIVO MÁGICO: AGENDA (1 COLUNA) E CASCATA DE REVISÕES -->
+<!-- ========================================================================= -->
+<style>
+  /* Esconde Ontem e Amanhã, foca o Hoje */
+  .acol.yd, .acol.tm { display: none !important; }
+  .ag-3col { grid-template-columns: 1fr !important; max-width: 750px !important; margin: 0 auto !important; display: block !important; }
+  .acol.td { background: var(--bg2) !important; border: 1px solid var(--brand) !important; border-radius: 12px !important; padding: 1.5rem !important; box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important; margin-bottom: 2rem !important; }
+  .acol.td .acol-lbl { font-size: 1.3rem !important; border-bottom: 2px solid var(--bd) !important; padding-bottom: 0.8rem !important; margin-bottom: 1.5rem !important; color: var(--ink) !important; }
+</style>
+
+<script>
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        if (typeof window.rebuildAgMap === 'function') {
+            window.rebuildAgMap = function() {
+                var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+                var cicloCfg = store._cicloConfig || {};
+                var discSettings = cicloCfg.disciplinas || {};
+                var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+                window.agMap = {}; 
+
+                allEntries.forEach(function(e) {
+                    var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+                    if (statusDisc === "pausada") return;
+
+                    function push(ds, tipo, rn) {
+                        if (!ds) return;
+                        if (!window.agMap[ds]) window.agMap[ds] = [];
+                        var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                        if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+                    }
+
+                    var ud0 = store["e" + e.id + "_r0"] || {};
+                    var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+                    
+                    // O "Novo" aparece sempre
+                    push(ud0.date || e.date, "NOVO", 0);
+
+                    // Cascata Inteligente: A revisão só aparece se o passo anterior estiver "ok"
+                    var prevStatus = r0Status;
+                    (e.revs || []).forEach(function(r) {
+                        var udr = store["e" + e.id + "_r" + r.num] || {};
+                        var currStatus = udr.status || "pend";
+
+                        if (prevStatus === "ok" || currStatus === "ok") {
+                            push(udr.date || r.date, "REV", r.num);
+                        }
+                        prevStatus = currStatus;
+                    });
+                });
+            };
+            // Aplica a nova lógica no ecrã silenciosamente
+            window.rebuildAgMap();
+            if (typeof renderAgenda === 'function') renderAgenda();
+        }
+    }, 500);
+});
 </script>
   
 </body>
