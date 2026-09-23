@@ -2557,10 +2557,14 @@ function dBadge(d) {
   return m[d] || "bk";
 }
 
-// ── AGENDA INDEX (LÓGICA BLINDADA DE DEPENDÊNCIAS) ─────────────────
+// ── AGENDA INDEX (LÓGICA DA AGENDA FOCADA) ─────────────────
 var agMap = {};
 
-window.initAllMaps = function() {
+function initAllMaps() {
+    // 1. OBRIGATÓRIO PARA AS OUTRAS ABAS NÃO FOCAREM BRANCAS!
+    if(typeof rebuildEntryMap === 'function') rebuildEntryMap();
+    if(typeof renderCicloFilters === 'function') renderCicloFilters();
+    
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
@@ -2600,9 +2604,9 @@ window.initAllMaps = function() {
             prevStatus = currStatus;
         });
     });
-};
+}
 
-window.renderCol = function(ds, colId) {
+function renderCol(ds, colId) {
   var items = agMap[ds] || [];
   var el = document.getElementById(colId);
   if (!el) return;
@@ -2610,30 +2614,31 @@ window.renderCol = function(ds, colId) {
     el.innerHTML = "<div style='text-align:center;padding:3rem 1rem;font-size:0.85rem;color:var(--ink4);font-weight:600;'>🎉 Nada agendado para este dia! Tira um descanso ou adianta matérias atrasadas.</div>";
     return;
   }
-  el.innerHTML = items.map(function(item) { return makeCard(item, lget()); }).join("");
-};
+  el.innerHTML = items.map(function(item) { return makeCard(item, typeof lget === 'function' ? lget() : JSON.parse(localStorage.getItem("cldf_v2") || "{}")); }).join("");
+}
 
-window.renderAgenda3col = function() {
-  var mainDate = agViewDate;
+function renderAgenda3col() {
+  var mainDate = agViewDate || TODAY;
   var titleStr = "🎯 " + (mainDate === TODAY ? "Hoje" : mainDate < TODAY ? "Histórico Passado" : "Planeamento Futuro");
   var lbl = document.getElementById("ag-view-title");
   if(lbl) lbl.innerHTML = titleStr;
   
   var dateLbl = document.getElementById("ag-view-date-main");
-  if(dateLbl) dateLbl.textContent = fmtD(mainDate) + " - " + fmtWd(mainDate);
+  if(dateLbl) dateLbl.textContent = (typeof fmtD === 'function' && typeof fmtWd === 'function') ? fmtD(mainDate) + " - " + fmtWd(mainDate) : mainDate;
 
+  // Renderiza apenas a coluna central para foco absoluto (a de 1 Coluna)
   renderCol(mainDate, "col-td");
   
   var topDate = document.getElementById("ag-view-date");
-  if(topDate) topDate.textContent = fmtD(mainDate);
-};
+  if(topDate) topDate.textContent = typeof fmtD === 'function' ? fmtD(mainDate) : mainDate;
+}
 
-window.renderAgenda = function() {
+function renderAgenda() {
   if(typeof initAgDiscFilter === 'function') initAgDiscFilter();
   renderAgenda3col();
 
   var ti = agMap[TODAY] || [];
-  var ud = lget();
+  var ud = typeof lget === 'function' ? lget() : JSON.parse(localStorage.getItem("cldf_v2") || "{}");
   var novos = ti.filter(function(i) { return i.tipo === "NOVO"; }).length;
   var revs = ti.length - novos;
   
@@ -2668,7 +2673,7 @@ window.renderAgenda = function() {
   }
 
   var tq = 0, ta = 0, sc = 0;
-  getAllEntries().forEach(function(e) {
+  (typeof getAllEntries === 'function' ? getAllEntries() : []).forEach(function(e) {
     var _t = getSaved(e.id, ud);
     if (_t.q) { tq += _t.q; ta += (_t.a||0); sc++; }
   });
@@ -2723,9 +2728,9 @@ window.renderAgenda = function() {
   if(upcomingEl) {
       upcomingEl.innerHTML = ugHtml || "<div style='color:var(--ink3);font-size:.7rem'>Sem itens agendados</div>";
   }
-};
+}
 
-window.agNavTo = function(ds) {
+function agNavTo(ds) {
   agViewDate = ds;
   agFilters = { tipo: "", status: "", disc: "", search: "" };
   document.querySelectorAll(".af-chip").forEach(function(b) { b.classList.toggle("active", b.dataset.v === ""); });
@@ -2738,7 +2743,7 @@ window.agNavTo = function(ds) {
   renderAgenda3col();
   var pageAg = document.getElementById("page-agenda");
   if(pageAg) pageAg.scrollIntoView({ behavior: "smooth" });
-};
+}
 // ── CICLO ─────────────────────────────────────────────────────
 var _df = "";
 function setDF(idx, btn) {
