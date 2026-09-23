@@ -11874,6 +11874,278 @@ window.addEventListener('load', function() {
         }
 
 })();
+<!-- ========================================================================= -->
+<!-- ADESIVO MÁGICO V3: BLOQUEIA O CÓDIGO ANTIGO E FORÇA O CÉREBRO NOVO -->
+<!-- ========================================================================= -->
+<script>
+setTimeout(function() {
+    // 1. Oculta colunas antigas da Agenda
+    var css = document.createElement("style");
+    css.innerHTML = ".ag-3col { grid-template-columns: 1fr !important; max-width: 750px !important; margin: 0 auto !important; display: block !important; } .acol.yd, .acol.tm { display: none !important; } .acol.td { background: var(--bg2) !important; border: 1px solid var(--brand) !important; border-radius: 12px !important; padding: 1.5rem !important; box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important; margin-bottom: 2rem !important; } .acol.td .acol-lbl { font-size: 1.3rem !important; border-bottom: 2px solid var(--bd) !important; padding-bottom: 0.8rem !important; margin-bottom: 1.5rem !important; color: var(--ink) !important; }";
+    document.head.appendChild(css);
+
+    window.atualizarDiscCfg = function(disc, key, value) {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+        cicloCfg.disciplinas[disc] = cicloCfg.disciplinas[disc] || { status: "ativa", prioridade: 2 };
+        cicloCfg.disciplinas[disc][key] = value;
+        store._cicloConfig = cicloCfg;
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+        
+        window.forcaGerenciar();
+    };
+
+    window.forcaGerenciar = function() {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+
+        // 2. DISCIPLINAS (Status: Ativa/Oculta | Prioridade: 1 a 3)
+        var discs = [];
+        var pendentesPorDisc = {};
+        allEntries.forEach(function(e) {
+            if (e.disc && discs.indexOf(e.disc) < 0) discs.push(e.disc);
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            var status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+            if (status !== "ok") pendentesPorDisc[e.disc] = (pendentesPorDisc[e.disc] || 0) + 1;
+        });
+
+        var htmlDisc = "";
+        if (discs.length === 0) {
+            htmlDisc = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina cadastrada.</div>";
+        } else {
+            discs.sort().forEach(function(d) {
+                var cfg = discSettings[d] || { status: "ativa", prioridade: 2 };
+                var pendentes = pendentesPorDisc[d] || 0;
+                
+                htmlDisc += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
+                htmlDisc += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + pendentes + "</b></div></div>";
+                htmlDisc += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"status\", this.value)'>";
+                htmlDisc += "    <option value='ativa' " + (cfg.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
+                htmlDisc += "    <option value='oculta' " + ((cfg.status === 'oculta' || cfg.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
+                htmlDisc += "  </select></div>";
+                htmlDisc += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"prioridade\", this.value)'>";
+                htmlDisc += "    <option value='1' " + (cfg.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
+                htmlDisc += "    <option value='2' " + (cfg.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
+                htmlDisc += "    <option value='3' " + (cfg.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
+                htmlDisc += "  </select></div></div>";
+            });
+        }
+        var containerDisc = document.getElementById("lista-disciplinas-ia");
+        if (containerDisc) containerDisc.innerHTML = htmlDisc;
+
+        // 3. VISÃO GERAL (Exclui matérias Ocultas, calcula 80 dias estritamente)
+        var metaDiasInput = document.getElementById("replan-meta-dias");
+        var horasDispInput = document.getElementById("replan-horas-disp");
+        var metaDias = metaDiasInput ? parseInt(metaDiasInput.value) || 80 : 80;
+        var horasSemana = horasDispInput ? parseInt(horasDispInput.value) || 20 : 20;
+
+        var totalPendentesAtivos = 0;
+        var pendentesPorPrio = { 1: 0, 2: 0, 3: 0 };
+        
+        allEntries.forEach(function(e) {
+            var cfg = discSettings[e.disc] || { status: "ativa", prioridade: 2 };
+            // A MAGIA ESTÁ AQUI: Matérias ocultas são completamente ignoradas no cálculo de prazo
+            if (cfg.status === "oculta" || cfg.status === "pausada") return; 
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                totalPendentesAtivos++;
+                var p = parseInt(cfg.prioridade) || 2;
+                pendentesPorPrio[p] = (pendentesPorPrio[p] || 0) + 1;
+            }
+        });
+
+        var topicosPorDia = metaDias > 0 ? (totalPendentesAtivos / metaDias).toFixed(1) : 0;
+        var horasPorDia = horasSemana / 7;
+        var viavel = topicosPorDia <= (horasPorDia * 2.5);
+        var cor = viavel ? "var(--green)" : "var(--gold)";
+        var statusTxt = viavel ? "✅ Ritmo Viável" : "⚠️ Ritmo Puxado";
+
+        var htmlVisao = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
+        htmlVisao += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + totalPendentesAtivos + "</div></div>";
+        htmlVisao += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária Recomendada</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + topicosPorDia + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos novos/dia</span></div></div></div>";
+        htmlVisao += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição do Ciclo Inteligente baseada na sua Meta Global:</div>";
+        htmlVisao += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
+        htmlVisao += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prioridade 3 (Alta): " + pendentesPorPrio[3] + " tópicos</div>";
+        htmlVisao += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prioridade 2 (Média): " + pendentesPorPrio[2] + " tópicos</div>";
+        htmlVisao += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prioridade 1 (Baixa): " + pendentesPorPrio[1] + " tópicos</div>";
+        htmlVisao += "</div>";
+        htmlVisao += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid " + cor + ";'><div style='font-weight:700; color:" + cor + ";'>" + statusTxt + "</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Para fechar no prazo de " + metaDias + " dias, você precisa avançar <b>" + Math.ceil(topicosPorDia) + " tópicos novos por dia</b>. As matérias com prioridade Alta aparecerão com mais frequência.</div></div>";
+
+        var painel = document.getElementById("painel-visao-geral");
+        if (painel) painel.innerHTML = htmlVisao;
+    };
+
+    // 4. SOBRESCREVER GERAR PLANO IA E INIT ALL MAPS
+    window.gerarPlanoIA = function() {
+        var metaDias = parseInt(document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : 80) || 80;
+        var horasSemana = parseInt(document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : 20) || 20;
+
+        try {
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var cicloCfg = store._cicloConfig || {};
+            cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+            cicloCfg.metaDias = metaDias;
+            cicloCfg.horasDisponiveis = horasSemana;
+            store._cicloConfig = cicloCfg;
+
+            var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+            var discData = {};
+            var activeDiscs = [];
+            var totalPending = 0;
+
+            allEntries.forEach(function(entry) {
+                if (entry.disc) {
+                    var cfg = cicloCfg.disciplinas[entry.disc] || { status: "ativa", prioridade: 2 };
+                    if (cfg.status !== "oculta" && cfg.status !== "pausada") {
+                        if (!discData[entry.disc]) {
+                            activeDiscs.push(entry.disc);
+                            discData[entry.disc] = { entries: [], prio: parseInt(cfg.prioridade) || 2 };
+                        }
+                        var ud0 = store["e" + entry.id + "_r0"] || {};
+                        if ((ud0.status || (entry.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                            totalPending++;
+                            // Adiciona as entradas ao pool multiplicadas pela prioridade
+                            for(let p=0; p < discData[entry.disc].prio; p++) {
+                                discData[entry.disc].entries.push(entry.id);
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (totalPending === 0) { alert("Você não tem tópicos pendentes ativos!"); return; }
+
+            var dailyGoal = Math.ceil(totalPending / metaDias);
+            if (dailyGoal < 1) dailyGoal = 1;
+
+            // Frequência: ordena para que as prioridades altas sejam agendadas mais vezes e primeiro
+            activeDiscs.sort(function(a, b) { return discData[b].prio - discData[a].prio; });
+
+            var pool = [];
+            var maxItems = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
+            for (var i = 0; i < maxItems; i++) {
+                activeDiscs.forEach(function(dName) {
+                    if (discData[dName].entries[i]) pool.push(discData[dName].entries[i]);
+                });
+            }
+            
+            var uniquePool = [];
+            var seenThisCycle = new Set();
+            pool.forEach(function(eid) {
+                if(!seenThisCycle.has(eid)) { uniquePool.push(eid); seenThisCycle.add(eid); }
+            });
+
+            var respectManual = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+            var currentDay = window.TODAY || new Date().toISOString().split('T')[0];
+            var countToday = 0;
+
+            uniquePool.forEach(function(eid) {
+                var k0 = "e" + eid + "_r0";
+                var ud0 = store[k0] || {};
+                if (respectManual && ud0._manualDate) return;
+
+                ud0.date = currentDay;
+                store[k0] = ud0;
+                
+                var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+                if (absDays.length === 0) absDays = [1, 7, 30];
+
+                var e = allEntries.find(function(x){return String(x.id)===String(eid);});
+                if (e) {
+                  (e.revs||[]).forEach(function(r, idx) {
+                    var kr = "e" + eid + "_r" + r.num;
+                    var udr = store[kr] || {};
+                    if ((udr.status || "pend") !== "ok") {
+                      var diasParaSomar = 30;
+                      if (idx < absDays.length) { diasParaSomar = absDays[idx]; } else {
+                          var ult = absDays[absDays.length - 1];
+                          var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+                          diasParaSomar = ult + (((ult - pen) > 0 ? (ult - pen) : 30) * (idx - absDays.length + 1));
+                      }
+                      udr.date = addDays(currentDay, diasParaSomar);
+                      store[kr] = udr;
+                    }
+                  });
+                }
+                countToday++;
+                if (countToday >= dailyGoal) { countToday = 0; currentDay = addDays(currentDay, 1); }
+            });
+
+            localStorage.setItem("cldf_v2", JSON.stringify(store));
+            if(typeof window.initAllMaps === 'function') window.initAllMaps();
+            if(typeof window.reAll === 'function') window.reAll();
+            window.forcaGerenciar();
+            
+            var toastEl = document.getElementById("toast");
+            if (toastEl) { toastEl.textContent = "✅ " + totalPending + " tópicos distribuídos em " + metaDias + " dias!"; toastEl.className = "show"; setTimeout(function(){ toastEl.className = ""; }, 3000); } 
+            else { alert("✅ Ciclo gerado com sucesso!"); }
+        };
+
+        window.initAllMaps = function() {
+            if(typeof rebuildEntryMap === 'function') rebuildEntryMap();
+            if(typeof renderCicloFilters === 'function') renderCicloFilters();
+            
+            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+            var cicloCfg = store._cicloConfig || {};
+            var discSettings = cicloCfg.disciplinas || {};
+            var allEntries = (typeof getAllEntries === 'function') ? getAllEntries() : [];
+
+            window.agMap = {}; 
+            allEntries.forEach(function(e) {
+                var statusDisc = (discSettings[e.disc] || {}).status || "ativa";
+                if (statusDisc === "oculta" || statusDisc === "pausada") return;
+
+                function push(ds, tipo, rn) {
+                    if (!ds) return;
+                    if (!window.agMap[ds]) window.agMap[ds] = [];
+                    var exists = window.agMap[ds].find(function(x) { return x.eid === e.id && x.rn === rn; });
+                    if(!exists) window.agMap[ds].push({ tipo: tipo, rn: rn, eid: e.id });
+                }
+
+                var ud0 = store["e" + e.id + "_r0"] || {};
+                var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+                push(ud0.date || e.date, "NOVO", 0);
+
+                var prevStatus = r0Status;
+                (e.revs || []).forEach(function(r) {
+                    var udr = store["e" + e.id + "_r" + r.num] || {};
+                    var currStatus = udr.status || "pend";
+                    // Esconde a revisão se o estudo original/anterior ainda não estiver feito
+                    if (prevStatus === "ok" || currStatus === "ok") {
+                        push(udr.date || r.date, "REV", r.num);
+                    }
+                    prevStatus = currStatus;
+                });
+            });
+        };
+
+        // 5. O GATILHO QUE VENCE O CÓDIGO ANTIGO
+        var botoesNav = document.querySelectorAll(".nbtn");
+        botoesNav.forEach(function(btn) {
+            if (btn.textContent.toLowerCase().indexOf("gerenciar") !== -1) {
+                btn.addEventListener("click", function() {
+                    setTimeout(window.forcaGerenciar, 50); // Corre logo após o site tentar carregar o velho
+                });
+            }
+        });
+
+        var idias = document.getElementById("replan-meta-dias");
+        var ihoras = document.getElementById("replan-horas-disp");
+        if (idias) idias.addEventListener("input", window.forcaGerenciar);
+        if (ihoras) ihoras.addEventListener("input", window.forcaGerenciar);
+
+        // Atualiza a tela imediatamente
+        window.initAllMaps();
+        if(typeof renderAgenda === 'function') renderAgenda();
+        var pageAtiva = document.querySelector(".page.active");
+        if (pageAtiva && pageAtiva.id === "page-gerenciar") {
+            window.forcaGerenciar();
+        }
+
+    }, 800);
 </script>
   
 </body>
