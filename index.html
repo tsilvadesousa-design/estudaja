@@ -10942,234 +10942,253 @@ window.addEventListener('load', function() {
     }, 500);
 });
 <!-- ========================================================================= -->
-<!-- MOTOR DEFINITIVO GERENCIAR (PRIORIDADES 1-3, 80 DIAS, OCULTAR MATÉRIAS) -->
+<!-- RESOLUÇÃO DEFINITIVA: SUBSTITUIÇÃO DIRECTA DAS FUNÇÕES DO GERENCIAR -->
 <!-- ========================================================================= -->
 <script>
-(function() {
-    function obterStore() { return JSON.parse(localStorage.getItem("cldf_v2") || "{}"); }
-    function salvarStore(s) { localStorage.setItem("cldf_v2", JSON.stringify(s)); }
+// 1. SOBRESCREVE A RENDERIZAÇÃO DAS DISCIPLINAS (Prioridades 1-3 e Oculta)
+window.atualizarDiscCfg = function(disc, key, value) {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+    cicloCfg.disciplinas[disc] = cicloCfg.disciplinas[disc] || { status: "ativa", prioridade: 2 };
+    cicloCfg.disciplinas[disc][key] = value;
+    store._cicloConfig = cicloCfg;
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    
+    if (typeof window.renderVisaoGeral === 'function') window.renderVisaoGeral();
+    if (typeof window.initAllMaps === 'function') window.initAllMaps();
+    if (typeof window.reAll === 'function') window.reAll();
+};
 
-    window.mudarConfigV5 = function(disc, key, val) {
-        var s = obterStore();
-        if (!s._cicloConfig) s._cicloConfig = {};
-        if (!s._cicloConfig.disciplinas) s._cicloConfig.disciplinas = {};
-        if (!s._cicloConfig.disciplinas[disc]) s._cicloConfig.disciplinas[disc] = { status: "ativa", prioridade: 2 };
-        s._cicloConfig.disciplinas[disc][key] = val;
-        salvarStore(s);
-        window.desenharVisaoV5();
-        if (typeof initAllMaps === 'function') initAllMaps();
-        if (typeof reAll === 'function') reAll();
-    };
+window.renderDisciplinas = function() {
+    var container = document.getElementById("lista-disciplinas-ia");
+    if (!container) return;
+    
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+    
+    var discs = [];
+    var pendentesPorDisc = {};
+    
+    allEntries.forEach(function(e) {
+        if (e.disc && discs.indexOf(e.disc) < 0) discs.push(e.disc);
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        var status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+        if (status !== "ok") pendentesPorDisc[e.disc] = (pendentesPorDisc[e.disc] || 0) + 1;
+    });
+    
+    if (discs.length === 0) {
+        container.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina encontrada. Importe um edital primeiro.</div>";
+        return;
+    }
+    
+    var html = "";
+    discs.sort().forEach(function(d) {
+        var cfg = discSettings[d] || { status: "ativa", prioridade: 2 };
+        var pendentes = pendentesPorDisc[d] || 0;
+        
+        html += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
+        html += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + pendentes + "</b></div></div>";
+        html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"status\", this.value)'>";
+        html += "    <option value='ativa' " + (cfg.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
+        html += "    <option value='oculta' " + ((cfg.status === 'oculta' || cfg.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
+        html += "  </select></div>";
+        html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"prioridade\", this.value)'>";
+        html += "    <option value='1' " + (cfg.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
+        html += "    <option value='2' " + (cfg.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
+        html += "    <option value='3' " + (cfg.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
+        html += "  </select></div></div>";
+    });
+    container.innerHTML = html;
+};
 
-    window.desenharDisciplinasV5 = function() {
-        var cont = document.getElementById("lista-disciplinas-ia");
-        if (!cont) return;
-        var s = obterStore();
-        var dCfg = (s._cicloConfig || {}).disciplinas || {};
-        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
+// 2. SOBRESCREVE A VISÃO GERAL (Esconde Diagnóstico, respeita meta de Dias e Matérias Ocultas)
+window.renderVisaoGeral = function() {
+    var painel = document.getElementById("painel-visao-geral");
+    if (!painel) return;
+    
+    var metaDiasInput = document.getElementById("replan-meta-dias");
+    var metaDias = metaDiasInput ? parseInt(metaDiasInput.value) || 80 : 80;
+    
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+    
+    var totalPendentesAtivos = 0;
+    var pendentesPorPrio = { 1: 0, 2: 0, 3: 0 };
+    
+    allEntries.forEach(function(e) {
+        var cfg = discSettings[e.disc] || { status: "ativa" };
+        if (cfg.status === "oculta" || cfg.status === "pausada") return; // Matérias ocultas excluídas
         
-        var discs = {};
-        entries.forEach(function(e) {
-            if (!e.disc) return;
-            if (!discs[e.disc]) discs[e.disc] = 0;
-            var ud0 = s["e"+e.id+"_r0"] || {};
-            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") discs[e.disc]++;
-        });
-        
-        var nomes = Object.keys(discs).sort();
-        if (nomes.length === 0) {
-            cont.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina cadastrada.</div>";
-            return;
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+            totalPendentesAtivos++;
+            var p = parseInt(cfg.prioridade) || 2;
+            pendentesPorPrio[p] = (pendentesPorPrio[p] || 0) + 1;
         }
-        
-        var html = "";
-        nomes.forEach(function(d) {
-            var c = dCfg[d] || { status: "ativa", prioridade: 2 };
-            html += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
-            html += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + discs[d] + "</b></div></div>";
-            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div>";
-            html += "  <select class='ginp' style='width:auto; padding:0.3rem;' onchange='mudarConfigV5(\"" + d + "\", \"status\", this.value)'>";
-            html += "    <option value='ativa' " + (c.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
-            html += "    <option value='oculta' " + ((c.status === 'oculta' || c.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
-            html += "  </select></div>";
-            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div>";
-            html += "  <select class='ginp' style='width:auto; padding:0.3rem;' onchange='mudarConfigV5(\"" + d + "\", \"prioridade\", this.value)'>";
-            html += "    <option value='1' " + (c.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
-            html += "    <option value='2' " + (c.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
-            html += "    <option value='3' " + (c.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
-            html += "  </select></div></div>";
-        });
-        cont.innerHTML = html;
-    };
+    });
+    
+    var topicosPorDia = metaDias > 0 ? (totalPendentesAtivos / metaDias).toFixed(1) : 0;
+    
+    var html = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + totalPendentesAtivos + "</div></div>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária Recomendada</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + topicosPorDia + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
+    html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição baseada na meta de " + metaDias + " dias:</div>";
+    html += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prioridade 3 (Alta): " + pendentesPorPrio[3] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prioridade 2 (Média): " + pendentesPorPrio[2] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prioridade 1 (Baixa): " + pendentesPorPrio[1] + " tópicos</div>";
+    html += "</div>";
+    html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas ignoradas nos cálculos. Para fechar em " + metaDias + " dias, cumpra <b>" + Math.ceil(topicosPorDia) + " tópicos novos por dia</b>.</div></div>";
+    
+    painel.innerHTML = html;
+};
 
-    window.desenharVisaoV5 = function() {
-        var painel = document.getElementById("painel-visao-geral");
-        if (!painel) return;
-        var s = obterStore();
-        var metaDias = parseInt(document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : 80) || 80;
-        var dCfg = (s._cicloConfig || {}).disciplinas || {};
-        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
-        
-        var ativos = 0;
-        var prios = {1:0, 2:0, 3:0};
-        
-        entries.forEach(function(e) {
-            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
-            if (c.status === "oculta" || c.status === "pausada") return;
-            var ud0 = s["e"+e.id+"_r0"] || {};
-            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
-                ativos++;
-                var p = parseInt(c.prioridade) || 2;
-                prios[p]++;
-            }
-        });
-        
-        var tpd = metaDias > 0 ? (ativos / metaDias).toFixed(1) : 0;
-        var html = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
-        html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + ativos + "</div></div>";
-        html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária P/ Fechar</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + tpd + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
-        html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição baseada na meta de " + metaDias + " dias:</div>";
-        html += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
-        html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prio 3 (Alta): " + prios[3] + " tópicos</div>";
-        html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prio 2 (Média): " + prios[2] + " tópicos</div>";
-        html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prio 1 (Baixa): " + prios[1] + " tópicos</div>";
-        html += "</div>";
-        html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas ignoradas. Estude <b>" + Math.ceil(tpd) + " tópicos novos por dia</b>.</div></div>";
-        painel.innerHTML = html;
-    };
+// 3. SOBRESCREVE O BOTÃO GERAR PLANO IA
+window.gerarPlanoIA = function() {
+    var metaDiasInput = document.getElementById("replan-meta-dias");
+    var metaDias = metaDiasInput ? parseInt(metaDiasInput.value) || 80 : 80;
 
-    window.gerarPlanoV5 = function(ev) {
-        if (ev) ev.preventDefault();
-        var s = obterStore();
-        var metaDias = parseInt(document.getElementById("replan-meta-dias").value) || 80;
-        if (!s._cicloConfig) s._cicloConfig = {};
-        s._cicloConfig.metaDias = metaDias;
-        var dCfg = s._cicloConfig.disciplinas || {};
-        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
-        
+    try {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        cicloCfg.disciplinas = cicloCfg.disciplinas || {};
+        cicloCfg.metaDias = metaDias;
+        store._cicloConfig = cicloCfg;
+
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
         var discData = {};
         var activeDiscs = [];
         var totalPending = 0;
-        
-        entries.forEach(function(e) {
-            if (!e.disc) return;
-            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
-            if (c.status === "oculta" || c.status === "pausada") return;
-            if (!discData[e.disc]) {
-                activeDiscs.push(e.disc);
-                discData[e.disc] = { entries: [], prio: parseInt(c.prioridade) || 2 };
-            }
-            var ud0 = s["e"+e.id+"_r0"] || {};
-            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
-                totalPending++;
-                for (var i=0; i < discData[e.disc].prio; i++) discData[e.disc].entries.push(e.id);
-            }
-        });
-        
-        if (totalPending === 0) { alert("Nenhum tópico ativo pendente."); return; }
-        var goal = Math.ceil(totalPending / metaDias) || 1;
-        activeDiscs.sort(function(a,b) { return discData[b].prio - discData[a].prio; });
-        
-        var pool = [];
-        var maxL = Math.max.apply(null, activeDiscs.map(function(d){ return discData[d].entries.length; }));
-        for (var i=0; i<maxL; i++) {
-            activeDiscs.forEach(function(d) {
-                if (discData[d].entries[i]) pool.push(discData[d].entries[i]);
-            });
-        }
-        
-        var uniq = [];
-        var seen = {};
-        pool.forEach(function(id) { if(!seen[id]){ uniq.push(id); seen[id]=true; } });
-        
-        var curDate = window.TODAY || new Date().toISOString().split('T')[0];
-        var count = 0;
-        var cbManual = document.getElementById("replan-respect-manual");
-        var resMan = cbManual ? cbManual.checked : true;
-        
-        function fnAddDays(sd, n) {
-            var d = new Date(sd + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10);
-        }
 
-        uniq.forEach(function(id) {
-            var ud0 = s["e"+id+"_r0"] || {};
-            if (resMan && ud0._manualDate) return;
-            ud0.date = curDate;
-            s["e"+id+"_r0"] = ud0;
-            
-            var eObj = entries.find(function(x){ return String(x.id) === String(id); });
-            var absDays = (s._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x){return !isNaN(x);});
-            if (absDays.length === 0) absDays = [1, 7, 30];
-            
-            if (eObj && eObj.revs) {
-                eObj.revs.forEach(function(r, idx) {
-                    var kR = "e"+id+"_r"+r.num;
-                    var udR = s[kR] || {};
-                    if ((udR.status || "pend") !== "ok") {
-                        var add = idx < absDays.length ? absDays[idx] : absDays[absDays.length-1] + (30 * (idx - absDays.length + 1));
-                        udR.date = fnAddDays(curDate, add);
-                        s[kR] = udR;
+        allEntries.forEach(function(entry) {
+            if (entry.disc) {
+                var cfg = cicloCfg.disciplinas[entry.disc] || { status: "ativa", prioridade: 2 };
+                if (cfg.status !== "oculta" && cfg.status !== "pausada") {
+                    if (!discData[entry.disc]) {
+                        activeDiscs.push(entry.disc);
+                        discData[entry.disc] = { entries: [], prio: parseInt(cfg.prioridade) || 2 };
                     }
-                });
+                    var ud0 = store["e" + entry.id + "_r0"] || {};
+                    if ((ud0.status || (entry.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                        totalPending++;
+                        for(let p=0; p < discData[entry.disc].prio; p++) {
+                            discData[entry.disc].entries.push(entry.id);
+                        }
+                    }
+                }
             }
-            count++;
-            if (count >= goal) { count = 0; curDate = fnAddDays(curDate, 1); }
         });
+
+        if (totalPending === 0) {
+            alert("Você não tem tópicos pendentes ativos para agendar!");
+            return;
+        }
+
+        var dailyGoal = Math.ceil(totalPending / metaDias);
+        if (dailyGoal < 1) dailyGoal = 1;
+
+        activeDiscs.sort(function(a, b) { return discData[b].prio - discData[a].prio; });
+
+        var pool = [];
+        var maxItems = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
         
-        salvarStore(s);
-        window.desenharVisaoV5();
-        if(typeof initAllMaps === 'function') initAllMaps();
-        if(typeof reAll === 'function') reAll();
-        alert("✅ " + totalPending + " tópicos ativos distribuídos para fechar em " + metaDias + " dias!");
-    };
-
-    function injectGerenciar() {
-        var btnGerar = document.querySelector("#page-gerenciar button[onclick*='gerarPlano'], #page-gerenciar button.btn-p");
-        if (btnGerar) {
-            btnGerar.removeAttribute("onclick");
-            btnGerar.onclick = window.gerarPlanoV5;
-            btnGerar.textContent = "✔ Gerar Ciclo Inteligente";
-        }
-        var inpDias = document.getElementById("replan-meta-dias");
-        if (inpDias && !inpDias.dataset.boundv5) {
-            var s = obterStore();
-            if (s._cicloConfig && s._cicloConfig.metaDias) inpDias.value = s._cicloConfig.metaDias;
-            inpDias.addEventListener("input", function() {
-                var st = obterStore();
-                if(!st._cicloConfig) st._cicloConfig={};
-                st._cicloConfig.metaDias = parseInt(this.value) || 80;
-                salvarStore(st);
-                window.desenharVisaoV5();
+        for (var i = 0; i < maxItems; i++) {
+            activeDiscs.forEach(function(dName) {
+                if (discData[dName].entries[i]) pool.push(discData[dName].entries[i]);
             });
-            inpDias.dataset.boundv5 = "true";
         }
-        window.desenharDisciplinasV5();
-        window.desenharVisaoV5();
+        
+        var uniquePool = [];
+        var seenThisCycle = new Set();
+        pool.forEach(function(eid) {
+            if(!seenThisCycle.has(eid)) { uniquePool.push(eid); seenThisCycle.add(eid); }
+        });
+
+        var cbManual = document.getElementById("replan-respect-manual");
+        var respectManual = cbManual ? cbManual.checked : true;
+
+        var currentDay = window.TODAY || new Date().toISOString().split('T')[0];
+        var countToday = 0;
+
+        uniquePool.forEach(function(eid) {
+            var k0 = "e" + eid + "_r0";
+            var ud0 = store[k0] || {};
+            if (respectManual && ud0._manualDate) return;
+
+            ud0.date = currentDay;
+            store[k0] = ud0;
+            
+            var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+            if (absDays.length === 0) absDays = [1, 7, 30];
+
+            var e = allEntries.find(function(x){return String(x.id)===String(eid);});
+            if (e) {
+              (e.revs||[]).forEach(function(r, idx) {
+                var kr = "e" + eid + "_r" + r.num;
+                var udr = store[kr] || {};
+                if ((udr.status || "pend") !== "ok") {
+                  var diasParaSomar = 30;
+                  if (idx < absDays.length) { diasParaSomar = absDays[idx]; } else {
+                      var ult = absDays[absDays.length - 1];
+                      var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
+                      diasParaSomar = ult + (((ult - pen) > 0 ? (ult - pen) : 30) * (idx - absDays.length + 1));
+                  }
+                  udr.date = window.addDays ? window.addDays(currentDay, diasParaSomar) : currentDay;
+                  store[kr] = udr;
+                }
+              });
+            }
+
+            countToday++;
+            if (countToday >= dailyGoal) { 
+                countToday = 0; 
+                currentDay = window.addDays ? window.addDays(currentDay, 1) : currentDay; 
+            }
+        });
+
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+        if(typeof window.initAllMaps === 'function') window.initAllMaps();
+        if(typeof window.reAll === 'function') window.reAll();
+        window.renderVisaoGeral();
+        
+        var toastEl = document.getElementById("toast");
+        if (toastEl) {
+            toastEl.textContent = "✅ " + totalPending + " tópicos distribuídos na Agenda!";
+            toastEl.className = "show";
+            setTimeout(function(){ toastEl.className = ""; }, 3000);
+        } else {
+            alert("Ciclo gerado com sucesso!");
+        }
+        
+    } catch(ex) { alert("Erro ao replanejar: " + ex.message); }
+};
+
+// 4. SOBRESCREVE A INICIALIZAÇÃO DA ABA GERENCIAR
+window.initGerenciar = function() {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    if (store._cicloConfig) {
+        var metaInp = document.getElementById("replan-meta-dias");
+        if(metaInp && store._cicloConfig.metaDias) metaInp.value = store._cicloConfig.metaDias;
     }
+    
+    // Liga o evento de recalcular Visão Geral quando digita os dias
+    var inMeta = document.getElementById("replan-meta-dias");
+    if (inMeta) inMeta.addEventListener("input", window.renderVisaoGeral);
 
-    var originalShowPage = window.showPage;
-    window.showPage = function(pageId, btn) {
-        if (typeof originalShowPage === 'function') originalShowPage(pageId, btn);
-        if (pageId === 'gerenciar') {
-            setTimeout(injectGerenciar, 50);
-            setTimeout(injectGerenciar, 200); 
-        }
-    };
+    window.renderDisciplinas();
+    window.renderVisaoGeral();
+};
 
-    setInterval(function() {
-        var page = document.getElementById("page-gerenciar");
-        if (page && page.classList.contains("active")) {
-            var painel = document.getElementById("painel-visao-geral");
-            if (painel && painel.innerHTML.includes("Diagnóstico")) injectGerenciar();
-        }
-    }, 500);
-
-    setTimeout(function() {
-        var page = document.querySelector(".page.active");
-        if (page && page.id === "page-gerenciar") injectGerenciar();
-    }, 300);
-
-})();
+// 5. ATIVAÇÃO FORÇADA
+var pageAtiva = document.querySelector(".page.active");
+if (pageAtiva && pageAtiva.id === "page-gerenciar") {
+    window.initGerenciar();
+}
 </script>
   
 </body>
