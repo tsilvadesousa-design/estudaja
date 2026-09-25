@@ -11145,6 +11145,70 @@ setTimeout(function() {
     }, 400);
 })();
 </script>
+<!-- ========================================================================= -->
+<!-- CORREÇÃO CIRÚRGICA: PAINEL VISÃO GERAL (LIGAÇÃO AOS 80 DIAS) -->
+<!-- ========================================================================= -->
+<script>
+window.renderVisaoGeral = function() {
+    var painel = document.getElementById("painel-visao-geral");
+    if (!painel) return;
+    
+    // Puxa exatamente o número que está na caixinha de texto (ex: 80)
+    var mInp = document.getElementById("replan-meta-dias");
+    var metaDias = mInp ? parseInt(mInp.value) || 80 : 80;
+    
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var cicloCfg = store._cicloConfig || {};
+    var discSettings = cicloCfg.disciplinas || {};
+    var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+    
+    var ativos = 0;
+    var prios = { 1: 0, 2: 0, 3: 0 };
+    
+    allEntries.forEach(function(e) {
+        var cfg = discSettings[e.disc] || { status: "ativa", prioridade: 2 };
+        if (cfg.status === "oculta" || cfg.status === "pausada") return; 
+        
+        var ud0 = store["e" + e.id + "_r0"] || {};
+        if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+            ativos++;
+            var p = parseInt(cfg.prioridade) || 2;
+            prios[p] = (prios[p] || 0) + 1;
+        }
+    });
+    
+    // Cálculo: Pendentes Ativos a dividir pela Meta de Dias
+    var topicosPorDia = metaDias > 0 ? (ativos / metaDias).toFixed(1) : 0;
+    
+    var html = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + ativos + "</div></div>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária Recomendada</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + topicosPorDia + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
+    
+    html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição do Ciclo (Meta de <b>" + metaDias + " dias</b>):</div>";
+    html += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prioridade 3 (Alta): " + prios[3] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prioridade 2 (Média): " + prios[2] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prioridade 1 (Baixa): " + prios[1] + " tópicos</div>";
+    html += "</div>";
+    html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas ignoradas. Para fechar o edital na data, estude <b>" + Math.ceil(topicosPorDia) + " tópicos novos por dia</b>.</div></div>";
+    
+    painel.innerHTML = html;
+};
+
+// Faz a Visão Geral atualizar em tempo real quando você escreve os dias
+document.addEventListener("input", function(e) {
+    if (e.target && e.target.id === "replan-meta-dias") {
+        var s = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (!s._cicloConfig) s._cicloConfig = {};
+        s._cicloConfig.metaDias = parseInt(e.target.value) || 80;
+        localStorage.setItem("cldf_v2", JSON.stringify(s));
+        window.renderVisaoGeral();
+    }
+});
+
+// Força a renderização ao carregar
+setTimeout(window.renderVisaoGeral, 600);
+</script>
   
 </body>
 </html>
