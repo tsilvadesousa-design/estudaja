@@ -10942,268 +10942,232 @@ window.addEventListener('load', function() {
     }, 500);
 });
 <!-- ========================================================================= -->
-<!-- GUARDIÃO DE FORÇA BRUTA: ABA GERENCIAR (PRIORIDADES 1-3 E 80 DIAS) -->
+<!-- MOTOR DEFINITIVO GERENCIAR (PRIORIDADES 1-3, 80 DIAS, OCULTAR MATÉRIAS) -->
 <!-- ========================================================================= -->
 <script>
 (function() {
-    function instalarCerebro() {
-        var abaGerenciar = document.getElementById("page-gerenciar");
-        if (!abaGerenciar) return;
+    function obterStore() { return JSON.parse(localStorage.getItem("cldf_v2") || "{}"); }
+    function salvarStore(s) { localStorage.setItem("cldf_v2", JSON.stringify(s)); }
 
-        // 1. CLONAR O BOTÃO PARA DESTRUIR EVENTOS FANTASMAS DO NAVEGADOR
-        var btnAntigo = abaGerenciar.querySelector("button[onclick*='gerarPlano'], button.btn-p");
-        if (btnAntigo && !btnAntigo.dataset.v3) {
-            var btnNovo = btnAntigo.cloneNode(true);
-            btnNovo.removeAttribute("onclick");
-            btnNovo.dataset.v3 = "true";
-            btnNovo.innerHTML = "✔ Gerar Ciclo Inteligente";
-            btnNovo.addEventListener("click", rodarPlanoIA);
-            btnAntigo.parentNode.replaceChild(btnNovo, btnAntigo);
+    window.mudarConfigV5 = function(disc, key, val) {
+        var s = obterStore();
+        if (!s._cicloConfig) s._cicloConfig = {};
+        if (!s._cicloConfig.disciplinas) s._cicloConfig.disciplinas = {};
+        if (!s._cicloConfig.disciplinas[disc]) s._cicloConfig.disciplinas[disc] = { status: "ativa", prioridade: 2 };
+        s._cicloConfig.disciplinas[disc][key] = val;
+        salvarStore(s);
+        window.desenharVisaoV5();
+        if (typeof initAllMaps === 'function') initAllMaps();
+        if (typeof reAll === 'function') reAll();
+    };
+
+    window.desenharDisciplinasV5 = function() {
+        var cont = document.getElementById("lista-disciplinas-ia");
+        if (!cont) return;
+        var s = obterStore();
+        var dCfg = (s._cicloConfig || {}).disciplinas || {};
+        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
+        
+        var discs = {};
+        entries.forEach(function(e) {
+            if (!e.disc) return;
+            if (!discs[e.disc]) discs[e.disc] = 0;
+            var ud0 = s["e"+e.id+"_r0"] || {};
+            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") discs[e.disc]++;
+        });
+        
+        var nomes = Object.keys(discs).sort();
+        if (nomes.length === 0) {
+            cont.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina cadastrada.</div>";
+            return;
         }
+        
+        var html = "";
+        nomes.forEach(function(d) {
+            var c = dCfg[d] || { status: "ativa", prioridade: 2 };
+            html += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
+            html += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + discs[d] + "</b></div></div>";
+            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div>";
+            html += "  <select class='ginp' style='width:auto; padding:0.3rem;' onchange='mudarConfigV5(\"" + d + "\", \"status\", this.value)'>";
+            html += "    <option value='ativa' " + (c.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
+            html += "    <option value='oculta' " + ((c.status === 'oculta' || c.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
+            html += "  </select></div>";
+            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div>";
+            html += "  <select class='ginp' style='width:auto; padding:0.3rem;' onchange='mudarConfigV5(\"" + d + "\", \"prioridade\", this.value)'>";
+            html += "    <option value='1' " + (c.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
+            html += "    <option value='2' " + (c.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
+            html += "    <option value='3' " + (c.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
+            html += "  </select></div></div>";
+        });
+        cont.innerHTML = html;
+    };
 
-        // 2. CLONAR OS INPUTS PARA DESTRUIR EVENTOS FANTASMAS
-        var inpDias = document.getElementById("replan-meta-dias");
-        if (inpDias && !inpDias.dataset.v3) {
-            var nDias = inpDias.cloneNode(true);
-            nDias.dataset.v3 = "true";
-            nDias.addEventListener("input", renderVisaoV3);
-            inpDias.parentNode.replaceChild(nDias, inpDias);
-        }
-
-        var inpHrs = document.getElementById("replan-horas-disp");
-        if (inpHrs && !inpHrs.dataset.v3) {
-            var nHrs = inpHrs.cloneNode(true);
-            nHrs.dataset.v3 = "true";
-            nHrs.addEventListener("input", renderVisaoV3);
-            inpHrs.parentNode.replaceChild(nHrs, inpHrs);
-        }
-
-        // 3. RENDERIZAR A TELA AGORA E ESMAGAR A VERSÃO ANTIGA
-        renderDisciplinasV3();
-        renderVisaoV3();
-    }
-
-    function renderVisaoV3() {
+    window.desenharVisaoV5 = function() {
         var painel = document.getElementById("painel-visao-geral");
         if (!painel) return;
-
-        // SE O CÓDIGO ANTIGO ESCREVEU O "DIAGNÓSTICO", LIMPE-O
-        if (painel.innerHTML.includes("Diagnóstico")) painel.innerHTML = "";
-
-        var mInp = document.getElementById("replan-meta-dias");
-        var metaDias = mInp ? parseInt(mInp.value) || 80 : 80;
-        
-        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-        var dCfg = (store._cicloConfig || {}).disciplinas || {};
+        var s = obterStore();
+        var metaDias = parseInt(document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : 80) || 80;
+        var dCfg = (s._cicloConfig || {}).disciplinas || {};
+        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
         
         var ativos = 0;
-        var prios = { 1: 0, 2: 0, 3: 0 };
+        var prios = {1:0, 2:0, 3:0};
         
-        allEntries.forEach(function(e) {
-            var cfg = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
-            if (cfg.status === "oculta" || cfg.status === "pausada") return; 
-            var ud0 = store["e" + e.id + "_r0"] || {};
+        entries.forEach(function(e) {
+            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
+            if (c.status === "oculta" || c.status === "pausada") return;
+            var ud0 = s["e"+e.id+"_r0"] || {};
             if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
                 ativos++;
-                var p = parseInt(cfg.prioridade) || 2;
+                var p = parseInt(c.prioridade) || 2;
                 prios[p]++;
             }
         });
         
         var tpd = metaDias > 0 ? (ativos / metaDias).toFixed(1) : 0;
-        
         var html = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
         html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + ativos + "</div></div>";
-        html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária P/ Fechar</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + tpd + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos novos/dia</span></div></div></div>";
-        
-        html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição do Ciclo baseada na meta de " + metaDias + " dias:</div>";
+        html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária P/ Fechar</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + tpd + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
+        html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição baseada na meta de " + metaDias + " dias:</div>";
         html += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
         html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prio 3 (Alta): " + prios[3] + " tópicos</div>";
         html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prio 2 (Média): " + prios[2] + " tópicos</div>";
         html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prio 1 (Baixa): " + prios[1] + " tópicos</div>";
         html += "</div>";
-        html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Para fechar no prazo de " + metaDias + " dias, cumpra <b>" + Math.ceil(tpd) + " tópicos novos por dia</b>. As matérias Ocultas foram ignoradas.</div></div>";
-        
+        html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas ignoradas. Estude <b>" + Math.ceil(tpd) + " tópicos novos por dia</b>.</div></div>";
         painel.innerHTML = html;
-    }
-
-    function renderDisciplinasV3() {
-        var container = document.getElementById("lista-disciplinas-ia");
-        if (!container) return;
-        if (container.innerHTML.includes("Diagnóstico")) container.innerHTML = ""; // Limpa lixo antigo
-
-        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var dCfg = (store._cicloConfig || {}).disciplinas || {};
-        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-        
-        var discs = [];
-        var pendentesPorDisc = {};
-        
-        allEntries.forEach(function(e) {
-            if (e.disc && discs.indexOf(e.disc) < 0) discs.push(e.disc);
-            var ud0 = store["e" + e.id + "_r0"] || {};
-            var status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
-            if (status !== "ok") pendentesPorDisc[e.disc] = (pendentesPorDisc[e.disc] || 0) + 1;
-        });
-        
-        if (discs.length === 0) {
-            container.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina encontrada.</div>";
-            return;
-        }
-        
-        var html = "";
-        discs.sort().forEach(function(d) {
-            var cfg = dCfg[d] || { status: "ativa", prioridade: 2 };
-            var pends = pendentesPorDisc[d] || 0;
-            
-            html += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
-            html += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + pends + "</b></div></div>";
-            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='window.atualizarDiscV3(\"" + d + "\", \"status\", this.value)'>";
-            html += "    <option value='ativa' " + (cfg.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
-            html += "    <option value='oculta' " + ((cfg.status === 'oculta' || cfg.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
-            html += "  </select></div>";
-            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='window.atualizarDiscV3(\"" + d + "\", \"prioridade\", this.value)'>";
-            html += "    <option value='1' " + (cfg.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
-            html += "    <option value='2' " + (cfg.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
-            html += "    <option value='3' " + (cfg.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
-            html += "  </select></div></div>";
-        });
-        container.innerHTML = html;
-    }
-
-    window.atualizarDiscV3 = function(disc, key, value) {
-        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var cicloCfg = store._cicloConfig || {};
-        cicloCfg.disciplinas = cicloCfg.disciplinas || {};
-        cicloCfg.disciplinas[disc] = cicloCfg.disciplinas[disc] || { status: "ativa", prioridade: 2 };
-        cicloCfg.disciplinas[disc][key] = value;
-        store._cicloConfig = cicloCfg;
-        localStorage.setItem("cldf_v2", JSON.stringify(store));
-        renderVisaoV3();
-        if (typeof initAllMaps === 'function') initAllMaps();
-        if (typeof reAll === 'function') reAll();
     };
 
-    function rodarPlanoIA(ev) {
-        if(ev) ev.preventDefault();
-        var mInp = document.getElementById("replan-meta-dias");
-        var metaDias = mInp ? parseInt(mInp.value) || 80 : 80;
+    window.gerarPlanoV5 = function(ev) {
+        if (ev) ev.preventDefault();
+        var s = obterStore();
+        var metaDias = parseInt(document.getElementById("replan-meta-dias").value) || 80;
+        if (!s._cicloConfig) s._cicloConfig = {};
+        s._cicloConfig.metaDias = metaDias;
+        var dCfg = s._cicloConfig.disciplinas || {};
+        var entries = typeof getAllEntries === 'function' ? getAllEntries() : [];
         
-        try {
-            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-            if(!store._cicloConfig) store._cicloConfig = {};
-            store._cicloConfig.metaDias = metaDias;
-            var dCfg = store._cicloConfig.disciplinas || {};
-            var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-            
-            var activeDiscs = [];
-            var discData = {};
-            var totalPending = 0;
-
-            allEntries.forEach(function(e) {
-                if (!e.disc) return;
-                var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
-                if (c.status === "oculta" || c.status === "pausada") return;
-                
-                if (!discData[e.disc]) {
-                    activeDiscs.push(e.disc);
-                    discData[e.disc] = { entries: [], prio: parseInt(c.prioridade) || 2 };
-                }
-                var ud0 = store["e" + e.id + "_r0"] || {};
-                if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
-                    totalPending++;
-                    for(var p=0; p < discData[e.disc].prio; p++) discData[e.disc].entries.push(e.id);
-                }
-            });
-
-            if (totalPending === 0) { alert("Sem tópicos pendentes ativos!"); return; }
-
-            var dailyGoal = Math.ceil(totalPending / metaDias) || 1;
-            activeDiscs.sort(function(a, b) { return discData[b].prio - discData[a].prio; });
-
-            var pool = [];
-            var maxItems = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
-            for (var i = 0; i < maxItems; i++) {
-                activeDiscs.forEach(function(d) {
-                    if (discData[d].entries[i]) pool.push(discData[d].entries[i]);
-                });
+        var discData = {};
+        var activeDiscs = [];
+        var totalPending = 0;
+        
+        entries.forEach(function(e) {
+            if (!e.disc) return;
+            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
+            if (c.status === "oculta" || c.status === "pausada") return;
+            if (!discData[e.disc]) {
+                activeDiscs.push(e.disc);
+                discData[e.disc] = { entries: [], prio: parseInt(c.prioridade) || 2 };
             }
-            
-            var uniq = [];
-            var seen = {};
-            pool.forEach(function(id) { if(!seen[id]) { uniq.push(id); seen[id] = true; } });
-
-            var cbManual = document.getElementById("replan-respect-manual");
-            var resMan = cbManual ? cbManual.checked : true;
-            var curDay = window.TODAY || new Date().toISOString().split('T')[0];
-            var count = 0;
-
-            function fAddDays(sDate, n) {
-                var d = new Date(sDate + "T12:00:00");
-                d.setDate(d.getDate() + n);
-                return d.toISOString().slice(0, 10);
+            var ud0 = s["e"+e.id+"_r0"] || {};
+            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                totalPending++;
+                for (var i=0; i < discData[e.disc].prio; i++) discData[e.disc].entries.push(e.id);
             }
-
-            uniq.forEach(function(id) {
-                var ud0 = store["e" + id + "_r0"] || {};
-                if (resMan && ud0._manualDate) return;
-
-                ud0.date = curDay;
-                store["e" + id + "_r0"] = ud0;
-                
-                var eObj = allEntries.find(function(x){return String(x.id)===String(id);});
-                var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x){return !isNaN(x);});
-                if (absDays.length === 0) absDays = [1, 7, 30];
-
-                if (eObj && eObj.revs) {
-                  eObj.revs.forEach(function(r, idx) {
-                    var kR = "e" + id + "_r" + r.num;
-                    var udR = store[kR] || {};
-                    if ((udR.status || "pend") !== "ok") {
-                      var add = idx < absDays.length ? absDays[idx] : absDays[absDays.length - 1] + (30 * (idx - absDays.length + 1));
-                      udR.date = fAddDays(curDay, add);
-                      store[kR] = udR;
-                    }
-                  });
-                }
-                count++;
-                if (count >= dailyGoal) { count = 0; curDay = fAddDays(curDay, 1); }
-            });
-
-            localStorage.setItem("cldf_v2", JSON.stringify(store));
-            renderVisaoV3();
-            if (typeof initAllMaps === 'function') initAllMaps();
-            if (typeof reAll === 'function') reAll();
-            alert("✅ " + totalPending + " tópicos ativos distribuídos na Agenda para os próximos " + metaDias + " dias!");
-        } catch(ex) { alert("Erro ao replanejar: " + ex.message); }
-    }
-
-    // 4. DESATIVAR AS ABAS "BURRAS" CLONANDO A NAVEGAÇÃO GLOBAL
-    document.querySelectorAll(".nbtn").forEach(function(btn) {
-        if(btn.textContent.trim().toLowerCase() === "gerenciar") {
-            var novaTab = btn.cloneNode(true);
-            btn.parentNode.replaceChild(novaTab, btn);
-            novaTab.addEventListener("click", function() {
-                if(typeof showPage === 'function') showPage('gerenciar', this);
-                instalarCerebro(); // Acorda o guardião!
+        });
+        
+        if (totalPending === 0) { alert("Nenhum tópico ativo pendente."); return; }
+        var goal = Math.ceil(totalPending / metaDias) || 1;
+        activeDiscs.sort(function(a,b) { return discData[b].prio - discData[a].prio; });
+        
+        var pool = [];
+        var maxL = Math.max.apply(null, activeDiscs.map(function(d){ return discData[d].entries.length; }));
+        for (var i=0; i<maxL; i++) {
+            activeDiscs.forEach(function(d) {
+                if (discData[d].entries[i]) pool.push(discData[d].entries[i]);
             });
         }
-    });
+        
+        var uniq = [];
+        var seen = {};
+        pool.forEach(function(id) { if(!seen[id]){ uniq.push(id); seen[id]=true; } });
+        
+        var curDate = window.TODAY || new Date().toISOString().split('T')[0];
+        var count = 0;
+        var cbManual = document.getElementById("replan-respect-manual");
+        var resMan = cbManual ? cbManual.checked : true;
+        
+        function fnAddDays(sd, n) {
+            var d = new Date(sd + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10);
+        }
 
-    // 5. O CÃO DE GUARDA: Roda a cada segundo e apaga a versão velha se ela tentar carregar
+        uniq.forEach(function(id) {
+            var ud0 = s["e"+id+"_r0"] || {};
+            if (resMan && ud0._manualDate) return;
+            ud0.date = curDate;
+            s["e"+id+"_r0"] = ud0;
+            
+            var eObj = entries.find(function(x){ return String(x.id) === String(id); });
+            var absDays = (s._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x){return !isNaN(x);});
+            if (absDays.length === 0) absDays = [1, 7, 30];
+            
+            if (eObj && eObj.revs) {
+                eObj.revs.forEach(function(r, idx) {
+                    var kR = "e"+id+"_r"+r.num;
+                    var udR = s[kR] || {};
+                    if ((udR.status || "pend") !== "ok") {
+                        var add = idx < absDays.length ? absDays[idx] : absDays[absDays.length-1] + (30 * (idx - absDays.length + 1));
+                        udR.date = fnAddDays(curDate, add);
+                        s[kR] = udR;
+                    }
+                });
+            }
+            count++;
+            if (count >= goal) { count = 0; curDate = fnAddDays(curDate, 1); }
+        });
+        
+        salvarStore(s);
+        window.desenharVisaoV5();
+        if(typeof initAllMaps === 'function') initAllMaps();
+        if(typeof reAll === 'function') reAll();
+        alert("✅ " + totalPending + " tópicos ativos distribuídos para fechar em " + metaDias + " dias!");
+    };
+
+    function injectGerenciar() {
+        var btnGerar = document.querySelector("#page-gerenciar button[onclick*='gerarPlano'], #page-gerenciar button.btn-p");
+        if (btnGerar) {
+            btnGerar.removeAttribute("onclick");
+            btnGerar.onclick = window.gerarPlanoV5;
+            btnGerar.textContent = "✔ Gerar Ciclo Inteligente";
+        }
+        var inpDias = document.getElementById("replan-meta-dias");
+        if (inpDias && !inpDias.dataset.boundv5) {
+            var s = obterStore();
+            if (s._cicloConfig && s._cicloConfig.metaDias) inpDias.value = s._cicloConfig.metaDias;
+            inpDias.addEventListener("input", function() {
+                var st = obterStore();
+                if(!st._cicloConfig) st._cicloConfig={};
+                st._cicloConfig.metaDias = parseInt(this.value) || 80;
+                salvarStore(st);
+                window.desenharVisaoV5();
+            });
+            inpDias.dataset.boundv5 = "true";
+        }
+        window.desenharDisciplinasV5();
+        window.desenharVisaoV5();
+    }
+
+    var originalShowPage = window.showPage;
+    window.showPage = function(pageId, btn) {
+        if (typeof originalShowPage === 'function') originalShowPage(pageId, btn);
+        if (pageId === 'gerenciar') {
+            setTimeout(injectGerenciar, 50);
+            setTimeout(injectGerenciar, 200); 
+        }
+    };
+
     setInterval(function() {
         var page = document.getElementById("page-gerenciar");
         if (page && page.classList.contains("active")) {
-            var btnGerar = page.querySelector("button[onclick*='gerarPlano'], button.btn-p");
-            if (btnGerar && !btnGerar.dataset.v3) {
-                instalarCerebro();
-            }
+            var painel = document.getElementById("painel-visao-geral");
+            if (painel && painel.innerHTML.includes("Diagnóstico")) injectGerenciar();
         }
-    }, 1000);
+    }, 500);
 
-    // Activa no arranque
-    setTimeout(instalarCerebro, 500);
+    setTimeout(function() {
+        var page = document.querySelector(".page.active");
+        if (page && page.id === "page-gerenciar") injectGerenciar();
+    }, 300);
 
 })();
 </script>
