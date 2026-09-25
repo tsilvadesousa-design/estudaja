@@ -11065,6 +11065,86 @@ setTimeout(function() {
     window.renderVisaoGeral();
 }, 500);
 </script>
+<!-- ========================================================================= -->
+<!-- CORREÇÃO DE RENDERIZAÇÃO: MÓDULO 2 (DISCIPLINAS) -->
+<!-- ========================================================================= -->
+<script>
+(function() {
+    function desenharDisciplinasSeguro() {
+        var container = document.getElementById("lista-disciplinas-ia");
+        if (!container) return;
+
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var cicloCfg = store._cicloConfig || {};
+        var discSettings = cicloCfg.disciplinas || {};
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+        
+        var discs = [];
+        var pendentesPorDisc = {};
+        
+        allEntries.forEach(function(e) {
+            if (e.disc && discs.indexOf(e.disc) < 0) discs.push(e.disc);
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            var status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
+            if (status !== "ok") {
+                pendentesPorDisc[e.disc] = (pendentesPorDisc[e.disc] || 0) + 1;
+            }
+        });
+        
+        if (discs.length === 0) {
+            container.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina encontrada. Importe um edital.</div>";
+            return;
+        }
+        
+        var html = "";
+        discs.sort().forEach(function(d) {
+            var cfg = discSettings[d] || { status: "ativa", prioridade: 2 };
+            var pendentes = pendentesPorDisc[d] || 0;
+            
+            html += "<div style='background:var(--bg3); border:1px solid var(--bd); padding:1rem; border-radius:8px; display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 0.5rem;'>";
+            html += "  <div style='flex:1; min-width:200px;'><div style='font-weight:700; color:var(--ink); font-size:0.95rem;'>" + d + "</div><div style='font-size:0.75rem; color:var(--ink3);'>Tópicos pendentes: <b>" + pendentes + "</b></div></div>";
+            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Status:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"status\", this.value)'>";
+            html += "    <option value='ativa' " + (cfg.status === 'ativa' ? 'selected' : '') + ">✅ Ativa</option>";
+            html += "    <option value='oculta' " + ((cfg.status === 'oculta' || cfg.status === 'pausada') ? 'selected' : '') + ">👁️ Oculta</option>";
+            html += "  </select></div>";
+            html += "  <div style='display:flex; gap:0.5rem; align-items:center;'><div style='font-size:0.75rem; color:var(--ink2);'>Prioridade:</div><select class='ginp' style='width:auto; padding:0.3rem;' onchange='atualizarDiscCfg(\"" + d + "\", \"prioridade\", this.value)'>";
+            html += "    <option value='1' " + (cfg.prioridade == 1 ? 'selected' : '') + ">1 - Baixa</option>";
+            html += "    <option value='2' " + (cfg.prioridade == 2 ? 'selected' : '') + ">2 - Média</option>";
+            html += "    <option value='3' " + (cfg.prioridade == 3 ? 'selected' : '') + ">3 - Alta</option>";
+            html += "  </select></div></div>";
+        });
+        container.innerHTML = html;
+    }
+
+    // Expõe globalmente para sincronizar com as outras funções
+    window.renderDisciplinasInteligente = desenharDisciplinasSeguro;
+    window.renderDisciplinas = desenharDisciplinasSeguro;
+
+    // Dispara a renderização ao clicar na aba Gerenciar
+    document.querySelectorAll(".nbtn").forEach(function(btn) {
+        if (btn.textContent.trim().toLowerCase().includes("gerenciar")) {
+            btn.addEventListener("click", function() {
+                setTimeout(desenharDisciplinasSeguro, 100);
+            });
+        }
+    });
+
+    // Dispara também caso o utilizador abra o menu sanfona das Disciplinas
+    document.addEventListener("click", function(e) {
+        if (e.target && e.target.closest && e.target.closest("summary") && e.target.textContent.includes("Disciplinas")) {
+            setTimeout(desenharDisciplinasSeguro, 50);
+        }
+    });
+
+    // Executa no arranque se já estiver na aba
+    setTimeout(function() {
+        var page = document.querySelector(".page.active");
+        if (page && page.id === "page-gerenciar") {
+            desenharDisciplinasSeguro();
+        }
+    }, 400);
+})();
+</script>
   
 </body>
 </html>
