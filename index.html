@@ -10945,8 +10945,8 @@ window.addEventListener('load', function() {
 <!-- RESOLUÇÃO DEFINITIVA: SUBSTITUIÇÃO DIRECTA DAS FUNÇÕES DO GERENCIAR -->
 <!-- ========================================================================= -->
 <script>
-// 1. SOBRESCREVE A RENDERIZAÇÃO DAS DISCIPLINAS (Prioridades 1-3 e Oculta)
-window.atualizarDiscCfg = function(disc, key, value) {
+// 1. SOBRESCREVE A FUNÇÃO DE DISCIPLINAS (Prioridades 1-3 e Oculta)
+function atualizarDiscCfg(disc, key, value) {
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     cicloCfg.disciplinas = cicloCfg.disciplinas || {};
@@ -10958,12 +10958,12 @@ window.atualizarDiscCfg = function(disc, key, value) {
     if (typeof window.renderVisaoGeral === 'function') window.renderVisaoGeral();
     if (typeof window.initAllMaps === 'function') window.initAllMaps();
     if (typeof window.reAll === 'function') window.reAll();
-};
+}
 
-window.renderDisciplinas = function() {
+window.renderDisciplinasInteligente = function() {
     var container = document.getElementById("lista-disciplinas-ia");
     if (!container) return;
-    
+
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
     var cicloCfg = store._cicloConfig || {};
     var discSettings = cicloCfg.disciplinas || {};
@@ -10980,7 +10980,7 @@ window.renderDisciplinas = function() {
     });
     
     if (discs.length === 0) {
-        container.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina encontrada. Importe um edital primeiro.</div>";
+        container.innerHTML = "<div style='color:var(--ink4); padding:1rem;'>Nenhuma disciplina. Importe o edital.</div>";
         return;
     }
     
@@ -11004,90 +11004,83 @@ window.renderDisciplinas = function() {
     container.innerHTML = html;
 };
 
-// 2. SOBRESCREVE A VISÃO GERAL (Esconde Diagnóstico, respeita meta de Dias e Matérias Ocultas)
+// 2. SOBRESCREVE A FUNÇÃO DE VISÃO GERAL (Ocultar Matérias e Meta 80 Dias)
 window.renderVisaoGeral = function() {
     var painel = document.getElementById("painel-visao-geral");
     if (!painel) return;
     
-    var metaDiasInput = document.getElementById("replan-meta-dias");
-    var metaDias = metaDiasInput ? parseInt(metaDiasInput.value) || 80 : 80;
+    var mInp = document.getElementById("replan-meta-dias");
+    var metaDias = mInp ? parseInt(mInp.value) || 80 : 80;
     
     var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    var cicloCfg = store._cicloConfig || {};
-    var discSettings = cicloCfg.disciplinas || {};
     var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+    var dCfg = (store._cicloConfig || {}).disciplinas || {};
     
-    var totalPendentesAtivos = 0;
-    var pendentesPorPrio = { 1: 0, 2: 0, 3: 0 };
+    var ativos = 0;
+    var prios = { 1: 0, 2: 0, 3: 0 };
     
     allEntries.forEach(function(e) {
-        var cfg = discSettings[e.disc] || { status: "ativa" };
-        if (cfg.status === "oculta" || cfg.status === "pausada") return; // Matérias ocultas excluídas
+        var cfg = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
+        if (cfg.status === "oculta" || cfg.status === "pausada") return; 
         
         var ud0 = store["e" + e.id + "_r0"] || {};
         if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
-            totalPendentesAtivos++;
+            ativos++;
             var p = parseInt(cfg.prioridade) || 2;
-            pendentesPorPrio[p] = (pendentesPorPrio[p] || 0) + 1;
+            prios[p]++;
         }
     });
     
-    var topicosPorDia = metaDias > 0 ? (totalPendentesAtivos / metaDias).toFixed(1) : 0;
+    var tpd = metaDias > 0 ? (ativos / metaDias).toFixed(1) : 0;
     
     var html = "<div style='display:flex; flex-wrap:wrap; gap:1.5rem; margin-bottom: 1rem;'>";
-    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + totalPendentesAtivos + "</div></div>";
-    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária Recomendada</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + topicosPorDia + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
-    html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição baseada na meta de " + metaDias + " dias:</div>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Tópicos Pendentes (Ativos)</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + ativos + "</div></div>";
+    html += "<div style='background:var(--bg3); padding:1.2rem; border-radius:8px; border:1px solid var(--bd); flex:1; min-width:200px;'><div style='font-size:0.75rem; color:var(--ink3); text-transform:uppercase;'>Meta Diária P/ Fechar</div><div style='font-size:2rem; font-weight:800; color:var(--ink);'>" + tpd + " <span style='font-size:1rem; font-weight:500; color:var(--ink4);'>tópicos/dia</span></div></div></div>";
+    
+    html += "<div style='font-size:0.8rem; color:var(--ink3); margin-bottom:0.5rem;'>Distribuição do Ciclo (Meta de " + metaDias + " dias):</div>";
     html += "<div style='display:flex; gap:1rem; flex-wrap:wrap; font-size:0.75rem;'>";
-    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prioridade 3 (Alta): " + pendentesPorPrio[3] + " tópicos</div>";
-    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prioridade 2 (Média): " + pendentesPorPrio[2] + " tópicos</div>";
-    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prioridade 1 (Baixa): " + pendentesPorPrio[1] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🔴 Prio 3 (Alta): " + prios[3] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟡 Prio 2 (Média): " + prios[2] + " tópicos</div>";
+    html += "  <div style='background:rgba(255,255,255,0.05); padding:0.5rem 1rem; border-radius:4px;'>🟢 Prio 1 (Baixa): " + prios[1] + " tópicos</div>";
     html += "</div>";
-    html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas ignoradas nos cálculos. Para fechar em " + metaDias + " dias, cumpra <b>" + Math.ceil(topicosPorDia) + " tópicos novos por dia</b>.</div></div>";
+    html += "<div style='margin-top:1.5rem; padding:1rem; border-radius:8px; background:rgba(0,0,0,0.2); border-left:4px solid var(--green);'><div style='font-weight:700; color:var(--green);'>✅ Estratégia Pronta</div><div style='font-size:0.8rem; color:var(--ink3); margin-top:0.3rem;'>Matérias Ocultas não entram no plano. Estude <b>" + Math.ceil(tpd) + " tópicos novos por dia</b>.</div></div>";
     
     painel.innerHTML = html;
 };
 
-// 3. SOBRESCREVE O BOTÃO GERAR PLANO IA
-window.gerarPlanoIA = function() {
-    var metaDiasInput = document.getElementById("replan-meta-dias");
-    var metaDias = metaDiasInput ? parseInt(metaDiasInput.value) || 80 : 80;
-
+// 3. SOBRESCREVE A FUNÇÃO GERAR PLANO IA E DELEGA O BOTÃO
+window.gerarPlanoIA = function(ev) {
+    if (ev) ev.preventDefault();
+    var metaDias = parseInt(document.getElementById("replan-meta-dias").value) || 80;
+    
     try {
         var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-        var cicloCfg = store._cicloConfig || {};
-        cicloCfg.disciplinas = cicloCfg.disciplinas || {};
-        cicloCfg.metaDias = metaDias;
-        store._cicloConfig = cicloCfg;
-
+        if (!store._cicloConfig) store._cicloConfig = {};
+        store._cicloConfig.metaDias = metaDias;
+        var dCfg = store._cicloConfig.disciplinas || {};
         var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+        
         var discData = {};
         var activeDiscs = [];
         var totalPending = 0;
 
-        allEntries.forEach(function(entry) {
-            if (entry.disc) {
-                var cfg = cicloCfg.disciplinas[entry.disc] || { status: "ativa", prioridade: 2 };
-                if (cfg.status !== "oculta" && cfg.status !== "pausada") {
-                    if (!discData[entry.disc]) {
-                        activeDiscs.push(entry.disc);
-                        discData[entry.disc] = { entries: [], prio: parseInt(cfg.prioridade) || 2 };
-                    }
-                    var ud0 = store["e" + entry.id + "_r0"] || {};
-                    if ((ud0.status || (entry.ok === "✅" ? "ok" : "pend")) !== "ok") {
-                        totalPending++;
-                        for(let p=0; p < discData[entry.disc].prio; p++) {
-                            discData[entry.disc].entries.push(entry.id);
-                        }
-                    }
-                }
+        allEntries.forEach(function(e) {
+            if (!e.disc) return;
+            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
+            if (c.status === "oculta" || c.status === "pausada") return;
+            
+            if (!discData[e.disc]) {
+                activeDiscs.push(e.disc);
+                discData[e.disc] = { entries: [], prio: parseInt(c.prioridade) || 2 };
+            }
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                totalPending++;
+                for(var p=0; p < discData[e.disc].prio; p++) discData[e.disc].entries.push(e.id);
             }
         });
 
-        if (totalPending === 0) {
-            alert("Você não tem tópicos pendentes ativos para agendar!");
-            return;
-        }
+        if (totalPending === 0) { alert("Sem tópicos pendentes ativos!"); return; }
 
         var dailyGoal = Math.ceil(totalPending / metaDias);
         if (dailyGoal < 1) dailyGoal = 1;
@@ -11096,99 +11089,111 @@ window.gerarPlanoIA = function() {
 
         var pool = [];
         var maxItems = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
-        
         for (var i = 0; i < maxItems; i++) {
-            activeDiscs.forEach(function(dName) {
-                if (discData[dName].entries[i]) pool.push(discData[dName].entries[i]);
+            activeDiscs.forEach(function(d) {
+                if (discData[d].entries[i]) pool.push(discData[d].entries[i]);
             });
         }
         
-        var uniquePool = [];
-        var seenThisCycle = new Set();
-        pool.forEach(function(eid) {
-            if(!seenThisCycle.has(eid)) { uniquePool.push(eid); seenThisCycle.add(eid); }
-        });
+        var uniq = [];
+        var seen = {};
+        pool.forEach(function(id) { if(!seen[id]) { uniq.push(id); seen[id] = true; } });
 
-        var cbManual = document.getElementById("replan-respect-manual");
-        var respectManual = cbManual ? cbManual.checked : true;
+        var resMan = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+        var curDay = window.TODAY || new Date().toISOString().split('T')[0];
+        var count = 0;
 
-        var currentDay = window.TODAY || new Date().toISOString().split('T')[0];
-        var countToday = 0;
+        uniq.forEach(function(id) {
+            var ud0 = store["e" + id + "_r0"] || {};
+            if (resMan && ud0._manualDate) return;
 
-        uniquePool.forEach(function(eid) {
-            var k0 = "e" + eid + "_r0";
-            var ud0 = store[k0] || {};
-            if (respectManual && ud0._manualDate) return;
-
-            ud0.date = currentDay;
-            store[k0] = ud0;
+            ud0.date = curDay;
+            store["e" + id + "_r0"] = ud0;
             
-            var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x) { return !isNaN(x); });
+            var eObj = allEntries.find(function(x){return String(x.id)===String(id);});
+            var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x){return !isNaN(x);});
             if (absDays.length === 0) absDays = [1, 7, 30];
 
-            var e = allEntries.find(function(x){return String(x.id)===String(eid);});
-            if (e) {
-              (e.revs||[]).forEach(function(r, idx) {
-                var kr = "e" + eid + "_r" + r.num;
-                var udr = store[kr] || {};
-                if ((udr.status || "pend") !== "ok") {
-                  var diasParaSomar = 30;
-                  if (idx < absDays.length) { diasParaSomar = absDays[idx]; } else {
-                      var ult = absDays[absDays.length - 1];
-                      var pen = absDays.length > 1 ? absDays[absDays.length - 2] : 0;
-                      diasParaSomar = ult + (((ult - pen) > 0 ? (ult - pen) : 30) * (idx - absDays.length + 1));
-                  }
-                  udr.date = window.addDays ? window.addDays(currentDay, diasParaSomar) : currentDay;
-                  store[kr] = udr;
+            if (eObj && eObj.revs) {
+              eObj.revs.forEach(function(r, idx) {
+                var kR = "e" + id + "_r" + r.num;
+                var udR = store[kR] || {};
+                if ((udR.status || "pend") !== "ok") {
+                  var add = idx < absDays.length ? absDays[idx] : absDays[absDays.length - 1] + (30 * (idx - absDays.length + 1));
+                  var tmpD = new Date(curDay + "T12:00:00");
+                  tmpD.setDate(tmpD.getDate() + add);
+                  udR.date = tmpD.toISOString().slice(0, 10);
+                  store[kR] = udR;
                 }
               });
             }
-
-            countToday++;
-            if (countToday >= dailyGoal) { 
-                countToday = 0; 
-                currentDay = window.addDays ? window.addDays(currentDay, 1) : currentDay; 
+            count++;
+            if (count >= dailyGoal) { 
+                count = 0; 
+                var tmpD2 = new Date(curDay + "T12:00:00");
+                tmpD2.setDate(tmpD2.getDate() + 1);
+                curDay = tmpD2.toISOString().slice(0, 10);
             }
         });
 
         localStorage.setItem("cldf_v2", JSON.stringify(store));
-        if(typeof window.initAllMaps === 'function') window.initAllMaps();
-        if(typeof window.reAll === 'function') window.reAll();
         window.renderVisaoGeral();
-        
-        var toastEl = document.getElementById("toast");
-        if (toastEl) {
-            toastEl.textContent = "✅ " + totalPending + " tópicos distribuídos na Agenda!";
-            toastEl.className = "show";
-            setTimeout(function(){ toastEl.className = ""; }, 3000);
-        } else {
-            alert("Ciclo gerado com sucesso!");
-        }
-        
+        if (typeof initAllMaps === 'function') initAllMaps();
+        if (typeof reAll === 'function') reAll();
+        alert("✅ " + totalPending + " tópicos ativos distribuídos para fechar em " + metaDias + " dias!");
     } catch(ex) { alert("Erro ao replanejar: " + ex.message); }
 };
 
-// 4. SOBRESCREVE A INICIALIZAÇÃO DA ABA GERENCIAR
-window.initGerenciar = function() {
-    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-    if (store._cicloConfig) {
-        var metaInp = document.getElementById("replan-meta-dias");
-        if(metaInp && store._cicloConfig.metaDias) metaInp.value = store._cicloConfig.metaDias;
+// 4. GUARDIÃO CONTÍNUO (Esmaga a função antiga e monitoriza o botão e as caixas)
+setInterval(function() {
+    var p = document.getElementById("page-gerenciar");
+    if (p && p.classList.contains("active")) {
+        
+        var v = document.getElementById("painel-visao-geral");
+        var l = document.getElementById("lista-disciplinas-ia");
+        
+        // Se o código fantasma meter o "Diagnóstico", ele limpa e chama o código novo instantaneamente
+        if (v && v.innerHTML.indexOf("Diagnóstico das Metas") !== -1) {
+            window.renderVisaoGeral();
+        }
+        if (l && l.innerHTML.indexOf("Diagnóstico das Metas") !== -1) {
+            window.renderDisciplinasInteligente();
+        }
+        
+        // Mantém o botão de gerar blindado
+        var btn = p.querySelector("button[onclick*='gerarPlano'], button.btn-p");
+        if (btn && !btn.dataset.blindado) {
+            btn.removeAttribute("onclick");
+            btn.onclick = window.gerarPlanoIA;
+            btn.textContent = "✔ Gerar Ciclo Inteligente";
+            btn.dataset.blindado = "true";
+        }
+        
+        // Mantém o campo de dias dinâmico
+        var inD = document.getElementById("replan-meta-dias");
+        if (inD && !inD.dataset.blindado) {
+            inD.addEventListener("input", function() {
+                var s = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+                if(!s._cicloConfig) s._cicloConfig={};
+                s._cicloConfig.metaDias = parseInt(this.value) || 80;
+                localStorage.setItem("cldf_v2", JSON.stringify(s));
+                window.renderVisaoGeral();
+            });
+            inD.dataset.blindado = "true";
+        }
     }
-    
-    // Liga o evento de recalcular Visão Geral quando digita os dias
-    var inMeta = document.getElementById("replan-meta-dias");
-    if (inMeta) inMeta.addEventListener("input", window.renderVisaoGeral);
+}, 500);
 
-    window.renderDisciplinas();
-    window.renderVisaoGeral();
-};
-
-// 5. ATIVAÇÃO FORÇADA
-var pageAtiva = document.querySelector(".page.active");
-if (pageAtiva && pageAtiva.id === "page-gerenciar") {
-    window.initGerenciar();
-}
+// Força carregamento imediato
+window.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        var s = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var inD = document.getElementById("replan-meta-dias");
+        if (inD && s._cicloConfig && s._cicloConfig.metaDias) inD.value = s._cicloConfig.metaDias;
+        window.renderDisciplinasInteligente();
+        window.renderVisaoGeral();
+    }, 1000);
+});
 </script>
   
 </body>
