@@ -1,30 +1,24 @@
-const CACHE_NAME = 'estudaja-v2'; // O 'v2' avisa o telemóvel para destruir o cache antigo
-
-self.addEventListener('install', e => {
-  self.skipWaiting(); // Força a atualização imediata e expulsa a versão antiga
+// EXTERMINADOR DE CACHE: Força o telemóvel a apagar a versão velha e a atualizar
+self.addEventListener('install', function(e) {
+  self.skipWaiting(); // Força a instalação imediata
 });
 
-self.addEventListener('activate', e => {
+self.addEventListener('activate', function(e) {
   e.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(keys.map(key => {
-        if (key !== CACHE_NAME) return caches.delete(key);
-      }));
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames.map(function(cacheName) {
+          // Apaga todos os visuais velhos guardados no telemóvel
+          return caches.delete(cacheName);
+        })
+      );
     })
   );
-  return self.clients.claim();
+  // Comete "suicídio" para nunca mais bloquear o site
+  self.registration.unregister();
 });
 
-self.addEventListener('fetch', e => {
-  // NOVA REGRA: Vai à internet primeiro (Network First). 
-  // Só mostra a versão offline se o telemóvel estiver em modo avião.
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
+self.addEventListener('fetch', function(e) {
+  // Obriga o telemóvel a ir sempre buscar à internet (GitHub) e nunca à memória
+  e.respondWith(fetch(e.request));
 });
