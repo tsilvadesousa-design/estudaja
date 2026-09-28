@@ -11209,6 +11209,147 @@ document.addEventListener("input", function(e) {
 // Força a renderização ao carregar
 setTimeout(window.renderVisaoGeral, 600);
 </script>
+<!-- ========================================================================= -->
+<!-- MÓDULO: BLOCO DE LEMBRETES FIXOS NA AGENDA -->
+<!-- ========================================================================= -->
+<script>
+window.renderLembretes = function() {
+    var container = document.getElementById("bloco-lembretes-container");
+    if(!container) return;
+    
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var lembretes = store._lembretes || [];
+    var pendentes = lembretes.filter(function(l) { return !l.concluido; });
+    
+    // Layout caprichado
+    var html = `<div style="background: var(--bg3); border: 1px solid var(--bd); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+        <div style="font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+            📌 Bloco de Lembretes e Metas
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            <input type="text" id="novo-lembrete-input" class="ginp" placeholder="Escreva o seu lembrete aqui..." style="flex: 1; min-width: 200px; padding: 0.8rem; border-radius: 8px;" onkeypress="if(event.key==='Enter') adicionarLembrete()">
+            <button onclick="adicionarLembrete()" style="background: var(--primary, #4A90E2); color: white; padding: 0.8rem 1.5rem; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s;">Adicionar</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.8rem;">`;
+    
+    if(pendentes.length === 0) {
+        html += `<div style="text-align: center; color: var(--ink3); font-size: 0.9rem; padding: 1rem; background: var(--bg2); border-radius: 8px; border: 1px dashed var(--bd);">Sem lembretes pendentes. A sua mente está livre! ✨</div>`;
+    } else {
+        // Ordena para os mais recentes ficarem em cima
+        pendentes.reverse().forEach(function(l) {
+            html += `
+            <div style="background: var(--bg2); border-left: 4px solid var(--primary, #4A90E2); padding: 1rem; border-radius: 8px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div style="flex: 1; min-width: 200px;">
+                    <div style="color: var(--ink); font-size: 0.95rem; margin-bottom: 0.4rem; line-height: 1.4;">${l.texto}</div>
+                    <div style="font-size: 0.7rem; color: var(--ink3); display: flex; gap: 0.5rem; align-items: center;">
+                        <span>📅 Criado em: ${l.data}</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.4rem;">
+                    <button onclick="editarLembrete(${l.id})" style="background: rgba(255, 255, 255, 0.5); border: 1px solid var(--bd); padding: 0.5rem 0.8rem; border-radius: 6px; cursor: pointer; color: var(--ink2); font-size: 0.85rem;" title="Editar">✏️ Editar</button>
+                    <button onclick="concluirLembrete(${l.id})" style="background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.5); padding: 0.5rem; border-radius: 6px; cursor: pointer; color: #2ecc71; font-size: 0.9rem;" title="Concluir">✅</button>
+                    <button onclick="excluirLembrete(${l.id})" style="background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.5); padding: 0.5rem; border-radius: 6px; cursor: pointer; color: #e74c3c; font-size: 0.9rem;" title="Excluir">🗑️</button>
+                </div>
+            </div>`;
+        });
+    }
+    
+    html += `</div></div>`;
+    container.innerHTML = html;
+};
+
+// Funções de Gestão
+window.adicionarLembrete = function() {
+    var inp = document.getElementById("novo-lembrete-input");
+    var txt = inp ? inp.value.trim() : "";
+    if(!txt) return;
+    
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var lembretes = store._lembretes || [];
+    
+    var hoje = new Date();
+    var dataFormatada = hoje.toLocaleDateString('pt-PT') + " às " + hoje.toLocaleTimeString('pt-PT', {hour: '2-digit', minute:'2-digit'});
+    
+    lembretes.push({ id: Date.now(), texto: txt, data: dataFormatada, concluido: false });
+    
+    store._lembretes = lembretes;
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    window.renderLembretes();
+};
+
+window.excluirLembrete = function(id) {
+    if(!confirm("Tem a certeza que quer excluir este lembrete?")) return;
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    store._lembretes = (store._lembretes || []).filter(function(l) { return l.id !== id; });
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    window.renderLembretes();
+};
+
+window.concluirLembrete = function(id) {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var lembretes = store._lembretes || [];
+    var l = lembretes.find(function(x) { return x.id === id; });
+    if(l) l.concluido = true;
+    store._lembretes = lembretes;
+    localStorage.setItem("cldf_v2", JSON.stringify(store));
+    window.renderLembretes();
+};
+
+window.editarLembrete = function(id) {
+    var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+    var lembretes = store._lembretes || [];
+    var l = lembretes.find(function(x) { return x.id === id; });
+    if(!l) return;
+    
+    var novoTxt = prompt("Edite o seu lembrete:", l.texto);
+    if(novoTxt !== null && novoTxt.trim() !== "") {
+        l.texto = novoTxt.trim();
+        store._lembretes = lembretes;
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+        window.renderLembretes();
+    }
+};
+
+// Injetor Automático na Aba Agenda
+window.initLembretesAgenda = function() {
+    var agendaPage = document.getElementById("page-agenda");
+    if(agendaPage) {
+        var container = document.getElementById("bloco-lembretes-container");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "bloco-lembretes-container";
+            // Insere logo no topo da agenda (abaixo do título principal, se existir)
+            var titulo = agendaPage.querySelector("h2, .header-title");
+            if (titulo && titulo.nextSibling) {
+                agendaPage.insertBefore(container, titulo.nextSibling);
+            } else {
+                agendaPage.insertBefore(container, agendaPage.firstChild);
+            }
+        }
+        window.renderLembretes();
+    }
+};
+
+// Disparadores
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        // Ao clicar no botão Agenda
+        document.querySelectorAll(".nbtn").forEach(function(btn) {
+            if(btn.textContent.trim().toLowerCase().includes("agenda")) {
+                btn.addEventListener("click", function() {
+                    setTimeout(window.initLembretesAgenda, 100);
+                });
+            }
+        });
+        
+        // Se já estiver na aba Agenda ao carregar a página
+        var pageAtiva = document.querySelector(".page.active");
+        if (pageAtiva && pageAtiva.id === "page-agenda") {
+            window.initLembretesAgenda();
+        }
+    }, 800);
+});
+</script>
   
 </body>
 </html>
