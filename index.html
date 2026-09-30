@@ -11350,6 +11350,76 @@ document.addEventListener("DOMContentLoaded", function() {
     }, 800);
 });
 </script>
+<!-- ========================================================================= -->
+<!-- PILOTO AUTOMÁTICO DE SINCRONIZAÇÃO (GOOGLE DRIVE) -->
+<!-- ========================================================================= -->
+<script>
+setTimeout(function() {
+    // 1. Interceta QUALQUER gravação (incluindo os Lembretes) e força o envio para a Nuvem
+    var originalSetItem = localStorage.setItem;
+    localStorage.setItem = function(key, val) {
+        originalSetItem.apply(this, arguments);
+        
+        // Se a chave for o ciclo e o Drive estiver conectado, salva automaticamente
+        if (key === "cldf_v2" && typeof window.salvarNoDrive === "function" && typeof obterTokenValido === "function" && obterTokenValido()) {
+            clearTimeout(window._delaySync);
+            window._delaySync = setTimeout(function() {
+                try {
+                    var payload = {
+                        main: JSON.parse(val),
+                        custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"),
+                        methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]")
+                    };
+                    window.salvarNoDrive(payload);
+                } catch(e) {}
+            }, 2000); // Aguarda 2 segundos após a sua última ação para não sobrecarregar a internet
+        }
+    };
+
+    // 2. Consulta silenciosa: Puxa os dados novos sem alertas nem ecrãs de recarregamento
+    window.sincronizarSilencioso = async function() {
+        if (typeof obterTokenValido !== "function" || !obterTokenValido()) return;
+        
+        try {
+            let token = obterTokenValido();
+            let q = encodeURIComponent("name='EstudaJa_Backup_Oficial.json' and trashed=false");
+            let res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`, { headers: { Authorization: 'Bearer ' + token } });
+            let data = await res.json();
+            
+            if (data.files && data.files.length > 0) {
+                let nuvemTime = new Date(data.files[0].modifiedTime).getTime();
+                let localTime = parseInt(localStorage.getItem("ultima_sync_nuvem") || "0");
+                
+                // Só descarrega se a versão da nuvem for mais recente que a que está no aparelho
+                if (nuvemTime > localTime) {
+                    let fileId = data.files[0].id;
+                    let dl = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + token } });
+                    let nuvemData = await dl.json();
+                    
+                    // Usa a função original para não disparar um ciclo infinito de upload
+                    originalSetItem.call(localStorage, "cldf_v2", JSON.stringify(nuvemData.main));
+                    if(nuvemData.custom) originalSetItem.call(localStorage, "cldf_v2_custom", JSON.stringify(nuvemData.custom));
+                    originalSetItem.call(localStorage, "ultima_sync_nuvem", nuvemTime.toString());
+                    
+                    // Atualiza os visuais (Agenda, Lembretes, Visão Geral) imediatamente
+                    if (typeof reAll === 'function') reAll();
+                    if (typeof renderLembretes === 'function') renderLembretes();
+                    if (typeof renderVisaoGeral === 'function') renderVisaoGeral();
+                    
+                    console.log("☁️ Sincronização invisível concluída com sucesso!");
+                }
+            }
+        } catch(e) { console.error("Erro no Piloto Automático:", e); }
+    };
+
+    // Dispara a busca invisível quando carrega a página e quando regressa ao separador
+    window.sincronizarSilencioso();
+    document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === "visible") window.sincronizarSilencioso();
+    });
+
+}, 2000); // Aguarda a inicialização do ecossistema Google
+</script>
   
 </body>
 </html>
