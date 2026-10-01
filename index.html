@@ -11420,6 +11420,133 @@ setTimeout(function() {
 
 }, 2000); // Aguarda a inicialização do ecossistema Google
 </script>
+<!-- ========================================================================= -->
+<!-- CORREÇÃO: FILTRO DE MATÉRIAS OCULTAS + DATA DE INÍCIO NO REPLANO INTELIGENTE -->
+<!-- ========================================================================= -->
+<script>
+(function() {
+    // -------------------------------------------------------------------------
+    // 1. INJETAR O CAMPO "DATA DE INÍCIO" NA SEÇÃO DE REPLANJAMENTO
+    // -------------------------------------------------------------------------
+    function injetarCampoDataInicio() {
+        // Procura o contêiner do Replano Inteligente
+        var containerReplano = document.querySelector("#secao-replano, .replano-container, #modal-replano, #page-gerenciar");
+        var targetSection = document.querySelector("#regras-replano") || document.querySelector("h3:contains('Regras'), h2:contains('Replano')")?.parentNode;
+
+        if (!document.getElementById("replano-data-inicio")) {
+            var divCampo = document.createElement("div");
+            divCampo.id = "box-data-inicio-replano";
+            divCampo.style.cssText = "background: var(--bg2, #f8f9fa); border: 1px solid var(--bd, #e2e8f0); border-radius: 10px; padding: 1rem; margin: 1rem 0; display: flex; flex-direction: column; gap: 0.5rem;";
+            
+            divCampo.innerHTML = `
+                <label style="font-weight: 700; color: var(--ink, #2d3748); font-size: 0.95rem; display: flex; align-align: center; gap: 0.5rem;">
+                    📅 Data de Início do Ciclo
+                </label>
+                <span style="font-size: 0.8rem; color: var(--ink3, #718096);">
+                    Escolha a data em que deseja recomeçar a distribuição das matérias pendentes no seu ciclo.
+                </span>
+                <input type="date" id="replano-data-inicio" class="ginp" style="padding: 0.6rem; border-radius: 8px; border: 1px solid var(--bd, #cbd5e0); font-size: 0.95rem; max-width: 250px;">
+            `;
+
+            // Procura o local ideal para inserir
+            var localInsercao = document.querySelector("#page-gerenciar") || document.querySelector(".page.active");
+            if (localInsercao) {
+                var btnReplano = localInsercao.querySelector("button[onclick*='replano'], button[onclick*='rebuild'], button[onclick*='gerar']");
+                if (btnReplano && btnReplano.parentNode) {
+                    btnReplano.parentNode.insertBefore(divCampo, btnReplano);
+                } else {
+                    localInsercao.prepend(divCampo);
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. APLICAR FILTRO DE OCULTAS E DATA DE INÍCIO NO REPLANO
+    // -------------------------------------------------------------------------
+    window.executarReplanoComData = function() {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        var custom = JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]");
+        
+        // Identifica matérias ocultas
+        var materiasOcultas = new Set();
+        custom.forEach(function(item) {
+            if (item.status === "Oculta" || item.oculta === true) {
+                materiasOcultas.add(item.nome || item.disciplina);
+            }
+        });
+
+        // Pega a data de início selecionada
+        var inputData = document.getElementById("replano-data-inicio");
+        var dataInicial = new Date();
+        if (inputData && inputData.value) {
+            var partes = inputData.value.split("-");
+            dataInicial = new Date(partes[0], partes[1] - 1, partes[2]);
+        }
+
+        // Executa a lógica de recálculo no ciclo local
+        if (store && store.items) {
+            var dataAtual = new Date(dataInicial);
+            var contadorNoDia = 0;
+            var maxPorDia = store.itensPorDia || 4;
+
+            store.items.forEach(function(item) {
+                var nomeMateria = item.disciplina || item.materia;
+                
+                // Se a matéria estiver OCULTA, remove a data e marca como ignorada
+                if (materiasOcultas.has(nomeMateria)) {
+                    item.oculto = true;
+                    return;
+                } else {
+                    item.oculto = false;
+                }
+
+                // Apenas altera datas de itens PENDENTES
+                if (item.status !== "Feito" && !item.concluido) {
+                    var yyyy = dataAtual.getFullYear();
+                    var mm = String(dataAtual.getMonth() + 1).padStart(2, '0');
+                    var dd = String(dataAtual.getDate()).padStart(2, '0');
+                    item.data = `${dd}/${mm}/${yyyy}`;
+                    
+                    contadorNoDia++;
+                    if (contadorNoDia >= maxPorDia) {
+                        contadorNoDia = 0;
+                        dataAtual.setDate(dataAtual.getDate() + 1);
+                    }
+                }
+            });
+
+            // Salva as alterações
+            localStorage.setItem("cldf_v2", JSON.stringify(store));
+            
+            // Força a atualização visual imediata das abas Ciclo e Agenda
+            if (typeof reAll === 'function') reAll();
+            if (typeof renderCiclo === 'function') renderCiclo();
+            if (typeof renderAgenda === 'function') renderAgenda();
+
+            alert("✅ Ciclo replanejado com sucesso a partir de " + dataInicial.toLocaleDateString('pt-PT') + " (Matérias ocultas foram removidas do ciclo)!");
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // 3. INTERCEPTAR O BOTÃO DE REPLANO EXISTENTE
+    // -------------------------------------------------------------------------
+    document.addEventListener("DOMContentLoaded", function() {
+        setTimeout(function() {
+            injetarCampoDataInicio();
+            
+            // Atrela a nova regra ao botão de Replano Inteligente
+            document.querySelectorAll("button").forEach(function(btn) {
+                if (btn.textContent.toLowerCase().includes("replano") || btn.textContent.toLowerCase().includes("recalcular")) {
+                    btn.addEventListener("click", function(e) {
+                        window.executarReplanoComData();
+                    });
+                }
+            });
+        }, 1000);
+    });
+})();
+</script>
   
 </body>
 </html>
