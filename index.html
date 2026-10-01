@@ -1279,6 +1279,22 @@ select option{background:var(--bg3)}
           <input type="checkbox" id="replan-respect-manual" checked>
           <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
         </div>
+        <div class="grow" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
+    <input type="checkbox" id="replan-respect-manual" checked>
+    <label for="replan-respect-manual" style="font-size:0.85rem; color:var(--ink2);">Preservar datas alteradas manualmente</label>
+</div>
+
+<!-- COLE ESTE BLOCO NOVO AQUI (Nova linha 1282) -->
+<div style="margin-top: 1rem;">
+    <label style="font-size:0.85rem; font-weight: 700; color:var(--ink2);">📅 Iniciar Ciclo a partir de:</label><br>
+    <input type="date" id="replan-data-inicio" class="ginp" style="width: 100%; max-width: 250px; margin-top: 0.3rem; padding: 0.5rem; border-radius: 6px;">
+</div>
+<!-- FIM DO BLOCO NOVO -->
+
+<div style="margin-top: 1rem; display:flex; gap:0.5rem;">
+    <!-- AQUI ESTÁ O NOVO COMANDO BLINDADO -->
+    <button class="btn-p" style="flex:1" onclick="gerarPlanoIA()">&#10003; Gerar Ciclo Automático</button>
+</div>
         <div style="margin-top: 1rem; display:flex; gap:0.5rem;">
           <!-- AQUI ESTÁ O NOVO COMANDO BLINDADO -->
           <button class="btn-p" style="flex:1" onclick="gerarPlanoIA()">&#10003; Gerar Ciclo Automático</button>
@@ -10541,45 +10557,135 @@ setTimeout(function() {
     // ---------------------------------------------------------
     // 3. MOTOR INTELIGENTE (Cálculo do Ciclo - Botão Azul)
     // ---------------------------------------------------------
-    window.gerarPlanoIA = function() {
-        var metaDiasStr = document.getElementById("replan-meta-dias") ? document.getElementById("replan-meta-dias").value : "80";
-        var metaDias = parseInt(metaDiasStr) || 80;
-        var horasSemanaStr = document.getElementById("replan-horas-disp") ? document.getElementById("replan-horas-disp").value : "20";
-        var horasSemana = parseInt(horasSemanaStr) || 20;
+   window.gerarPlanoIA = function(ev) {
+    if (ev) ev.preventDefault();
+    var metaDias = parseInt(document.getElementById("replan-meta-dias").value) || 80;
+    
+    // 1. LÊ A DATA EXATA QUE A THAMIRES ESCOLHEU
+    var inputData = document.getElementById("replan-data-inicio");
+    var curDay = typeof window.TODAY !== 'undefined' ? window.TODAY : new Date().toISOString().split('T')[0];
+    if (inputData && inputData.value) {
+        curDay = inputData.value; 
+    }
+    
+    try {
+        var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
+        if (!store._cicloConfig) store._cicloConfig = {};
+        store._cicloConfig.metaDias = metaDias;
+        var dCfg = store._cicloConfig.disciplinas || {};
+        var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
+        
+        var discData = {};
+        var activeDiscs = [];
+        var totalPending = 0;
 
-        try {
-            var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
-            var cicloCfg = store._cicloConfig || {};
-            cicloCfg.disciplinas = cicloCfg.disciplinas || {};
-
-            var allEntries = typeof getAllEntries === "function" ? getAllEntries() : [];
-            var discData = {};
-            var activeDiscs = [];
-            var sumPriorities = 0;
-            var totalPending = 0;
-
-            allEntries.forEach(function(entry) {
-                if (entry.disc) {
-                    var dName = entry.disc;
-                    var cfg = cicloCfg.disciplinas[dName] || { status: "ativa", prioridade: 3 };
-
-                    if (cfg.status === "ativa" || cfg.status === "Ativa") {
-                        if (!discData[dName]) {
-                            activeDiscs.push(dName);
-                            var p = parseInt(cfg.prioridade) || 3;
-                            sumPriorities += p;
-                            discData[dName] = { prio: p, pendingCount: 0, entries: [] };
-                        }
-                        var k0 = "e" + entry.id + "_r0";
-                        var ud0 = store[k0] || {};
-                        if (ud0.status !== "ok") {
-                            discData[dName].pendingCount++;
-                            totalPending++;
-                            discData[dName].entries.push(entry.id);
-                        }
-                    }
+        allEntries.forEach(function(e) {
+            if (!e.disc) return;
+            var c = dCfg[e.disc] || { status: "ativa", prioridade: 2 };
+            
+            // 2. ORDEM DE LIMPEZA: SE ESTÁ OCULTA, DESTRÓI AS DATAS ANTIGAS!
+            if (c.status === "oculta" || c.status === "pausada") {
+                var ud0Hidden = store["e" + e.id + "_r0"];
+                if (ud0Hidden && ud0Hidden.date) {
+                    delete ud0Hidden.date; // Remove a data da teoria
+                    store["e" + e.id + "_r0"] = ud0Hidden;
                 }
+                if (e.revs) {
+                    e.revs.forEach(function(r) {
+                        var udrHidden = store["e" + e.id + "_r" + r.num];
+                        if (udrHidden && udrHidden.date) {
+                            delete udrHidden.date; // Remove a data das revisões
+                            store["e" + e.id + "_r" + r.num] = udrHidden;
+                        }
+                    });
+                }
+                return; // Ignora esta matéria e passa à próxima
+            }
+            
+            // 3. SE ESTÁ ATIVA, PREPARA PARA O REPLANO
+            if (!discData[e.disc]) {
+                activeDiscs.push(e.disc);
+                discData[e.disc] = { entries: [], prio: parseInt(c.prioridade) || 2 };
+            }
+            var ud0 = store["e" + e.id + "_r0"] || {};
+            if ((ud0.status || (e.ok === "✅" ? "ok" : "pend")) !== "ok") {
+                totalPending++;
+                for(var p=0; p < discData[e.disc].prio; p++) discData[e.disc].entries.push(e.id);
+            }
+        });
+
+        if (totalPending === 0) { alert("Sem tópicos pendentes ativos!"); return; }
+
+        var dailyGoal = Math.ceil(totalPending / metaDias);
+        if (dailyGoal < 1) dailyGoal = 1;
+
+        activeDiscs.sort(function(a, b) { return discData[b].prio - discData[a].prio; });
+
+        var pool = [];
+        var maxItems = Math.max.apply(null, activeDiscs.map(function(d) { return discData[d].entries.length; }));
+        for (var i = 0; i < maxItems; i++) {
+            activeDiscs.forEach(function(d) {
+                if (discData[d].entries[i]) pool.push(discData[d].entries[i]);
             });
+        }
+        
+        var uniq = [];
+        var seen = {};
+        pool.forEach(function(id) { if(!seen[id]) { uniq.push(id); seen[id] = true; } });
+
+        var resMan = document.getElementById("replan-respect-manual") ? document.getElementById("replan-respect-manual").checked : true;
+        var count = 0;
+        
+        // GUARDA A DATA INICIAL SELECIONADA PARA A MENSAGEM FINAL
+        var dataInicialEscolhida = curDay.split('-').reverse().join('/');
+
+        uniq.forEach(function(id) {
+            var ud0 = store["e" + id + "_r0"] || {};
+            if (resMan && ud0._manualDate) return;
+
+            ud0.date = curDay;
+            store["e" + id + "_r0"] = ud0;
+            
+            var eObj = allEntries.find(function(x){return String(x.id)===String(id);});
+            var absDays = (store._revIntervals || "1, 7, 30").split(",").map(function(x) { return parseInt(x.trim()); }).filter(function(x){return !isNaN(x);});
+            if (absDays.length === 0) absDays = [1, 7, 30];
+
+            if (eObj && eObj.revs) {
+              eObj.revs.forEach(function(r, idx) {
+                var kR = "e" + id + "_r" + r.num;
+                var udR = store[kR] || {};
+                if ((udR.status || "pend") !== "ok") {
+                  var add = idx < absDays.length ? absDays[idx] : absDays[absDays.length - 1] + (30 * (idx - absDays.length + 1));
+                  var dTmp = new Date(curDay + "T12:00:00");
+                  dTmp.setDate(dTmp.getDate() + add);
+                  udR.date = dTmp.toISOString().slice(0, 10);
+                  store[kR] = udR;
+                }
+              });
+            }
+
+            count++;
+            if (count >= dailyGoal) { 
+                count = 0; 
+                var dTmp2 = new Date(curDay + "T12:00:00");
+                dTmp2.setDate(dTmp2.getDate() + 1);
+                curDay = dTmp2.toISOString().slice(0, 10);
+            }
+        });
+
+        localStorage.setItem("cldf_v2", JSON.stringify(store));
+        window.renderVisaoGeral();
+        if (typeof initAllMaps === 'function') initAllMaps();
+        if (typeof reAll === 'function') reAll();
+        
+        // Empurra logo para o Google Drive para o telemóvel atualizar
+        if (typeof obterTokenValido === "function" && obterTokenValido() && typeof window.salvarNoDrive === "function") {
+            window.salvarNoDrive({ main: store, custom: JSON.parse(localStorage.getItem("cldf_v2_custom") || "[]"), methods: JSON.parse(localStorage.getItem("cldf_gab_methods") || "[]") });
+        }
+        
+        alert("✅ " + totalPending + " tópicos ativos distribuídos a partir de " + dataInicialEscolhida + "!\nMatérias ocultas foram retiradas do ciclo.");
+    } catch(ex) { alert("Erro ao replanejar: " + ex.message); }
+};
 
             var daily = Math.ceil(totalPending / (metaDias > 0 ? metaDias : 1));
             if (isNaN(daily) || daily < 1) daily = 1;
