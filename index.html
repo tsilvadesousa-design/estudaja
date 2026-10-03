@@ -10743,17 +10743,17 @@ setTimeout(function() {
                 }
             });
 
-            lset(store);
-    if(typeof initAllMaps === 'function') initAllMaps();
-    if(typeof toast === 'function') toast("📋 Plano Gerado e Carga Alocada!");
-    else alert("📋 Plano Gerado e Carga Alocada!");
+            try {
+        lset(store);
+        if(typeof initAllMaps === 'function') initAllMaps();
+        if(typeof toast === 'function') toast("📋 Plano Gerado e Carga Alocada!");
+        else alert("📋 Plano Gerado e Carga Alocada!");
 
-    if(typeof reAll === 'function') reAll();
-    window.renderVisaoGeral();
-} catch(ex) {
-    alert("Erro ao replanear: " + ex.message);
-}
-
+        if(typeof reAll === 'function') reAll();
+        window.renderVisaoGeral();
+    } catch(ex) {
+        alert("Erro ao replanear: " + ex.message);
+    }
     window.salvarConfigGlobais = function() {
         var store = JSON.parse(localStorage.getItem("cldf_v2") || "{}");
         if (!store._cicloConfig) store._cicloConfig = {};
