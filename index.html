@@ -10985,7 +10985,6 @@ setTimeout(function() {
   .acol.td .acol-lbl { font-size: 1.3rem !important; border-bottom: 2px solid var(--bd) !important; padding-bottom: 0.8rem !important; margin-bottom: 1.5rem !important; color: var(--ink) !important; }
 </style>
 
-<script>
 window.addEventListener('load', function() {
     setTimeout(function() {
         if (typeof window.rebuildAgMap === 'function') {
@@ -11011,10 +11010,8 @@ window.addEventListener('load', function() {
                     var ud0 = store["e" + e.id + "_r0"] || {};
                     var r0Status = ud0.status || (e.ok === "✅" ? "ok" : "pend");
                     
-                    // O "Novo" aparece sempre
                     push(ud0.date || e.date, "NOVO", 0);
 
-                    // Cascata Inteligente: A revisão só aparece se o passo anterior estiver "ok"
                     var prevStatus = r0Status;
                     (e.revs || []).forEach(function(r) {
                         var udr = store["e" + e.id + "_r" + r.num] || {};
@@ -11027,7 +11024,6 @@ window.addEventListener('load', function() {
                     });
                 });
             };
-            // Aplica a nova lógica no ecrã silenciosamente
             window.rebuildAgMap();
             if (typeof renderAgenda === 'function') renderAgenda();
         }
